@@ -1,0 +1,183 @@
+---
+# YAML Front Matter — controls the document's metadata and output settings.
+# Copy (and adapt) this for your own notebooks.
+title: "Introduction to Quarto Notebooks with Python and uv"
+author: "Franziska Bender, Aurélien Sallin"
+date: today                  # Automatically uses the date you render the document
+format:
+  html:
+    toc: true                # Adds a Table of Contents on the side
+    toc-depth: 4             # Includes headings up to level 4 (####) in the TOC
+    number-sections: false   # Numbers your sections automatically if set to true
+    code-fold: false         # Keeps your code visible (set to true to hide it)
+    code-annotations: hover  # Reveals code annotations when hovering
+    theme: cosmo             # A clean, built-in look
+    embed-resources: true    # Packages everything into a single self-contained HTML file
+execute:
+  echo: true                 # Shows your code in the output
+  error: true                # Renders the document even if a code chunk produces an error
+  freeze: false              # Re-runs all cells on every render (no caching)
+jupyter: python3             # Tells Quarto to use your Python 3 kernel
+---
+
+
+
+## Markdown basics
+
+This document is a Quarto notebook, which means it combines Markdown text with executable Python code. You can write your explanations and documentation in Markdown, and include code chunks that run when you render the document.
+
+Each document contains a YAML front matter at the top (the part between the `---` lines) that controls the document's metadata and output settings. You can customize it to fit your needs. **For the group project, please use the given template and only change the title, author, and date fields.**
+
+Here are the most common elements you will need:
+
+### Text formatting
+
+```markdown
+*italic*        **bold**        `inline code`
+```
+
+### Headings
+
+```markdown
+# Heading 1
+## Heading 2
+### Heading 3
+```
+
+Use headings to structure your document — they also appear automatically in the table of contents.
+
+### Lists
+
+```markdown
+- Item one
+- Item two
+  - Nested item
+
+1. First step
+2. Second step
+```
+
+### Links and images
+
+If you decide to include an image for your Entity-Relationship (ER) diagram or any other visual, you can add it with the following syntax. Make sure to replace the URL and file path with your actual content.
+
+```markdown
+[link text](https://example.com)
+
+![alt text](path/to/image.png)
+```
+
+
+## Code chunks
+
+Python code goes in fenced code blocks marked with `{python}`. Quarto executes them when rendering and embeds the output in the HTML.
+
+```{python}
+print("Hello, world!")
+```
+
+You can also produce plots. Quarto automatically captures and embeds the output. You have to install `matplotlib` with `uv` in your virtual environment to run the following example.
+
+```{python}
+import matplotlib.pyplot as plt
+
+x = [1, 2, 3, 4, 5]
+y = [2, 4, 1, 5, 3]
+
+plt.plot(x, y, marker="o")
+plt.title("Example plot")
+plt.xlabel("x")
+plt.ylabel("y")
+plt.show()
+```
+
+### Hiding or folding code chunks
+
+Use chunk options to control whether code is shown. Add `#| echo: false` to hide a chunk entirely, or `#| code-fold: true` to make it collapsible (readers can click to expand it).
+
+```{{python}}
+#| code-fold: true
+
+import matplotlib.pyplot as plt
+# This code is hidden by default but can be expanded by clicking
+```
+
+```{python}
+#| code-fold: true
+
+import matplotlib.pyplot as plt
+# This code is hidden by default but can be expanded by clicking
+```
+
+You can also set these options globally in the document header under `execute:` or `format: html:` (see the YAML at the top of this file).
+
+
+
+## Rendering your notebook
+
+### Required packages
+
+Make sure your project has the following dependencies to render a Quarto document. Please initiate `uv` for your project and add the dependencies with:
+
+```bash
+uv init --python 3.13
+uv add jupyter ipykernel
+```
+
+`jupyter` and `ipykernel` are needed for Quarto to execute your notebook's Python code. There is a problem with `ipykernel` and python 3.14, so we recommend using python 3.13 for now.
+
+
+### Render and preview
+
+Quarto needs to know which Python interpreter to use. Set `QUARTO_PYTHON` to the project's virtual environment, then render (to produce the html output) or preview (to preview your output).
+
+Run these commands from the **project root** in your terminal, replacing `your-notebook.qmd` with the actual path and actual filename of your notebook.
+
+**Windows — Command Prompt**:
+
+```bat
+set QUARTO_PYTHON=.venv\Scripts\python.exe
+quarto render path\your-notebook.qmd
+quarto preview path\your-notebook.qmd
+```
+
+**Windows — PowerShell**:
+
+```powershell
+$env:QUARTO_PYTHON = ".venv\Scripts\python.exe"
+quarto render path\your-notebook.qmd
+quarto preview path\your-notebook.qmd
+```
+
+**macOS / Linux**:
+
+```bash
+export QUARTO_PYTHON=.venv/bin/python
+quarto render path/your-notebook.qmd
+quarto preview path/your-notebook.qmd
+```
+
+To stop the preview, press `Ctrl+C` in the terminal.
+
+#### Previewing inside VS Code
+
+If you use VS Code, install the [Quarto extension](https://marketplace.visualstudio.com/items?itemName=quarto.quarto). It adds a **Preview** button in the top-right toolbar (`Ctrl+Shift+K`) that renders and displays the output in a side panel, updating on every save.
+
+> **Important:** The Preview button does **not** automatically use the uv virtual environment. You must set `QUARTO_PYTHON` before launching VS Code for the button to work. Run this once in your terminal **before** opening VS Code, replacing the path with your project's root:
+>
+> *Windows (Command Prompt):*
+> ```bat
+> set QUARTO_PYTHON=C:\path\to\your\project\.venv\Scripts\python.exe
+> code .
+> ```
+> *macOS / Linux:*
+> ```bash
+> export QUARTO_PYTHON=/path/to/your/project/.venv/bin/python
+> code .
+> ```
+>
+> Alternatively, use the terminal commands above. They always work regardless of how VS Code was launched.
+
+> **Note:** If you don't have Quarto installed on your computer, it must be installed separately on your system. It is not a Python package and cannot be added via `uv`. Quarto is installed automatically with RStudio.
+> Download it from <https://quarto.org/docs/get-started/>.
+

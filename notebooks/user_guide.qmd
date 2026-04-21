@@ -1,0 +1,30 @@
+---
+# YAML Front Matter — controls the document's metadata and output settings.
+# Copy (and adapt) this for your own notebooks.
+title: "User guide"
+author:
+  - "Author NumberOne"
+  - "Author NumberTwo"
+date: today                  # Automatically uses the date you render the document
+format:
+  html:
+    toc: true                # Adds a Table of Contents on the side
+    toc-depth: 4             # Includes headings up to level 4 (####) in the TOC
+    number-sections: false   # Numbers your sections automatically if set to true
+    code-fold: false         # Keeps your code visible (set to true to hide it)
+    code-annotations: hover  # Reveals code annotations when hovering
+    theme: cosmo             # A clean, built-in look
+    embed-resources: true    # Packages everything into a single self-contained HTML file
+execute:
+  echo: true                 # Shows your code in the output
+  error: true                # Renders the document even if a code chunk produces an error
+  freeze: false              # Re-runs all cells on every render (no caching)
+jupyter: python3             # Tells Quarto to use your Python 3 kernel
+---
+
+The user guide must include:
+
+- Class overview: A brief description of the class and the economic topic it covers.
+- Getting started: Instructions for any setup required (such as handling the FRED API key) and a working example showing how to instantiate the class.
+- Method documentation: Explanations of each available method, the arguments they accept, and the outputs they return.
+- Example code: For your most important methods, provide short, isolated code examples showing how to use them and what output to expect.
