@@ -1,1 +1,47 @@
+# ── Secrets ──────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
 
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.python-version
+
+# ── Virtual environments ─────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Quarto rendering artefacts ───────────────────────────────────────────────
+# We commit the rendered .html (it is a deliverable), but not the cache/aux dirs.
+.quarto/
+_freeze/
+*_files/
+
+# ── PDFs and presentations (per team rule) ───────────────────────────────────
+*.pdf
+*.pptx
+*.ppt
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── OS files ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDEs ─────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.user
+
+# ── Packaging ────────────────────────────────────────────────────────────────
+dist/
+build/
+*.egg-info/

@@ -1,20 +1,81 @@
-[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/O8g-fESH)
-# README
+# Group 37 — Beveridge Curve and Further Education in the US since 2000
 
-This template contains the repo structure for the group project.
+## Authors
 
-It also contains 1) a short introduction about how to write, use, and render Quarto documents with Python and `uv`, and 2) a script example for the data preparation.
+- Allotey Kelvin, Lloyd
+- Bautista, Pablo
+- Braun, Finn
+- Bruehwiler, Nils
 
-## Instructions
+**Research question.** Do young Americans pursue further education in response to deteriorating labour market conditions in the United States since 2000?
 
-Before you start working on your project:
+The Beveridge curve plots job openings against unemployment. It gives a quick visual read on how tight the labour market is. The project is built around it. We plot the curve for US data since 2000 and overlay master's enrollment, to check whether downturns push people back into school. The three recessions in the window (2001, 2008, 2020) are also compared on a single chart so the depth and shape of each are visible. A separate output method computes a stress index that combines several FRED series, with weights the user can change. The class is written so the same logic can be reused for a different recession, country or sector by swapping the input data.
 
-1. Set up `uv` with Python 3.13 and install the required packages:
-   ```
-   uv init --python 3.13
-   uv add jupyter ipykernel pandas
-   ```
-2. Read `intro_to_quarto.qmd`. Try to render it following the instructions in the document itself. After rendering, you should have a new HTML file with the Quarto document rendered.
-3. For your submission, **please erase this README** and write a meaningful readme file that is sufficient for others to clone and run your project.
+## Requirements
 
-**GOOD LUCK!**
+- Python 3.13
+- [uv](https://docs.astral.sh/uv/)
+- [Quarto](https://quarto.org/)
+
+## Run the analysis
+
+**Windows (PowerShell):**
+
+```powershell
+uv sync
+$env:QUARTO_PYTHON = ".venv\Scripts\python.exe"
+quarto render notebooks\analysis.qmd
+quarto render notebooks\user_guide.qmd
+```
+
+**macOS / Linux:**
+
+```bash
+uv sync
+export QUARTO_PYTHON=.venv/bin/python
+quarto render notebooks/analysis.qmd
+quarto render notebooks/user_guide.qmd
+```
+
+`data/fred.db` is committed, so no API key is needed to render the notebooks.
+
+## Rebuild the database
+
+```bash
+uv run python data/build_fred.py
+```
+
+(`uv run` handles paths cross-platform — forward slashes work on Windows too.)
+
+This needs a `FRED_API_KEY` in a local `.env` file. Template is `.env.example`.
+
+## Project structure
+
+```
+.
+├── data/
+│   ├── build_fred.py             # FRED to DuckDB ETL script
+│   ├── er_diagram.png
+│   └── fred.db
+├── src/
+│   └── beveridge_framework.py    # BeveridgeFramework class
+└── notebooks/
+    ├── analysis.qmd / .html
+    └── user_guide.qmd / .html
+```
+
+## Data
+
+Time series come from [FRED](https://fred.stlouisfed.org). Master's enrollment is from the [NCES Digest of Education Statistics](https://nces.ed.gov/programs/digest/), which is not on FRED.
+
+| Series ID      | Description                                                          | Use                                       |
+|----------------|----------------------------------------------------------------------|-------------------------------------------|
+| `JTSJOR`       | Job Openings Rate, Total Nonfarm                                     | Beveridge x-axis                          |
+| `UNRATE`       | Civilian Unemployment Rate                                           | Beveridge y-axis                          |
+| `JTSQUR`       | Quits Rate, Total Nonfarm                                            | input to stress index                     |
+| `JTSHRL`       | Hires Rate, Total Nonfarm                                            | input to stress index                     |
+| `USREC`        | NBER Recession Indicator                                             | recession shading on plots                |
+| `LNS12032194`  | Employed Part Time for Economic Reasons                              | involuntary part-time (share via PAYEMS)  |
+| `PAYEMS`       | Total Nonfarm Payrolls                                               | denominator for the part-time share       |
+| `LNS14027659`  | Unemployment Rate, Bachelor's+, age 25 and older                     | outside option for the grad-school choice |
+| `LNS12300012`  | Employment-Population Ratio, ages 16–24                              | youth labour-market attachment            |

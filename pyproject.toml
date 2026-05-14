@@ -1,0 +1,15 @@
+[project]
+name = "group-project-introduction-to-programming-group-project-37"
+version = "0.1.0"
+description = "Group 37 final project: Beveridge curve and further education in the US since 2000."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "duckdb",
+    "fredapi",
+    "ipykernel",
+    "jupyter",
+    "matplotlib",
+    "pandas",
+    "python-dotenv",
+]
