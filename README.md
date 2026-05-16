@@ -3,9 +3,9 @@
 ## Authors
 
 - Allotey Kelvin, Lloyd
-- Bautista, Pablo
 - Braun, Finn
 - Bruehwiler, Nils
+- Troillet, Cyril
 
 **Research question.** Do young Americans pursue further education in response to deteriorating labour market conditions in the United States since 2000?
 
@@ -14,8 +14,8 @@ The Beveridge curve plots job openings against unemployment. It gives a quick vi
 ## Requirements
 
 - Python 3.13
-- [uv](https://docs.astral.sh/uv/)
-- [Quarto](https://quarto.org/)
+- [uv]
+- [Quarto]
 
 ## Run the analysis
 
@@ -27,7 +27,6 @@ $env:QUARTO_PYTHON = ".venv\Scripts\python.exe"
 quarto render notebooks\analysis.qmd
 quarto render notebooks\user_guide.qmd
 ```
-
 **macOS / Linux:**
 
 ```bash
@@ -45,37 +44,34 @@ quarto render notebooks/user_guide.qmd
 uv run python data/build_fred.py
 ```
 
-(`uv run` handles paths cross-platform — forward slashes work on Windows too.)
-
 This needs a `FRED_API_KEY` in a local `.env` file. Template is `.env.example`.
 
 ## Project structure
 
 ```
-.
 ├── data/
 │   ├── build_fred.py             # FRED to DuckDB ETL script
-│   ├── er_diagram.png
 │   └── fred.db
 ├── src/
 │   └── beveridge_framework.py    # BeveridgeFramework class
 └── notebooks/
     ├── analysis.qmd / .html
+    ├── star_schema_sketch.png
     └── user_guide.qmd / .html
+
 ```
 
 ## Data
 
-Time series come from [FRED](https://fred.stlouisfed.org). Master's enrollment is from the [NCES Digest of Education Statistics](https://nces.ed.gov/programs/digest/), which is not on FRED.
+Time series come from [FRED](https://fred.stlouisfed.org). Master's enrollment is from the [NCES Digest of Education Statistics](https://nces.ed.gov/programs/digest/).
 
 | Series ID      | Description                                                          | Use                                       |
 |----------------|----------------------------------------------------------------------|-------------------------------------------|
 | `JTSJOR`       | Job Openings Rate, Total Nonfarm                                     | Beveridge x-axis                          |
 | `UNRATE`       | Civilian Unemployment Rate                                           | Beveridge y-axis                          |
 | `JTSQUR`       | Quits Rate, Total Nonfarm                                            | input to stress index                     |
-| `JTSHRL`       | Hires Rate, Total Nonfarm                                            | input to stress index                     |
+| `JTSHIL`       | Hires Rate, Total Nonfarm                                            | input to stress index                     |
 | `USREC`        | NBER Recession Indicator                                             | recession shading on plots                |
 | `LNS12032194`  | Employed Part Time for Economic Reasons                              | involuntary part-time (share via PAYEMS)  |
 | `PAYEMS`       | Total Nonfarm Payrolls                                               | denominator for the part-time share       |
-| `LNS14027659`  | Unemployment Rate, Bachelor's+, age 25 and older                     | outside option for the grad-school choice |
-| `LNS12300012`  | Employment-Population Ratio, ages 16–24                              | youth labour-market attachment            |
+| `LNS14027662`  | Unemployment Rate, Bachelor's+, age 25 and older                     | outside option for the grad-school choice |
