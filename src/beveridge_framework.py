@@ -14,13 +14,15 @@ The class is layered:
 from datetime import datetime
 from pathlib import Path
 
-import duckdb as db
+import duckdb
 import matplotlib.pyplot as plt
 import pandas as pd
 
 
 class BeveridgeFramework:
     """
+    Purpose
+    ----------
     Toolkit for analysing US labour-market conditions through the Beveridge curve.
 
     The class reads from a local DuckDB database built by `data/build_fred.py`,
@@ -35,10 +37,6 @@ class BeveridgeFramework:
     db_path : str or pathlib.Path, default "data/fred.db"
         Path to the DuckDB database. Must be readable.
 
-    Attributes
-    ----------
-    db_path : pathlib.Path
-        Resolved path to the database.
 
     Raises
     ------
@@ -57,7 +55,7 @@ class BeveridgeFramework:
                 "Run 'uv run python data/build_fred.py' to build it."
             )
         # Read-only mode prevents accidental writes during analysis.
-        self._conn = db.connect(str(self.db_path), read_only=True)
+        self._conn = duckdb.connect(str(self.db_path), read_only=True)
 
         # Cache the list of available series IDs once. Cheaper than querying
         # on every load, and used by _validate_series_id.
@@ -77,6 +75,8 @@ class BeveridgeFramework:
 
     def available_series(self, category: str | None = None) -> pd.DataFrame:
         """
+        Purpose
+        ----------
         Return the metadata of every series in the database.
 
         Useful for discovering what's available before calling `load_series`.
@@ -91,6 +91,11 @@ class BeveridgeFramework:
         -------
         pandas.DataFrame
             Columns: series_id, title, units, frequency, seasonal_adjustment, category.
+
+        Raises
+        ------
+        ValueError
+            If the category is not found in the database.
         """
         if category is None:
             query = "SELECT * FROM series ORDER BY category, series_id"
@@ -116,6 +121,8 @@ class BeveridgeFramework:
         end_date: str | None = None,
     ) -> pd.Series:
         """
+         Purpose
+        ----------
         Read a single time series from the database.
 
         Parameters
@@ -135,9 +142,10 @@ class BeveridgeFramework:
 
         Raises
         ------
+        TypeError
+            If series_id or dates are not strings.
         ValueError
-            If `series_id` is unknown, or dates are invalid (wrong type, wrong
-            format, or start_date >= end_date).
+            If series_id is not in the database, or if dates are invalid (wrong format or start_date >= end_date).
         """
         self._validate_series_id(series_id)
         self._validate_dates(start_date, end_date)
@@ -162,6 +170,8 @@ class BeveridgeFramework:
         end_date: str | None = None,
     ) -> dict[str, pd.Series]:
         """
+         Purpose
+        ----------
         Load every series in a given category as a dict of pandas Series.
 
         Convenience wrapper around `load_series` — saves the caller from
@@ -211,7 +221,7 @@ class BeveridgeFramework:
         Check that date arguments are well-formed and ordered.
 
         We accept None (no bound), or a string in 'YYYY-MM-DD' format. Anything
-        else raises ValueError with a message explaining what's wrong.
+        else raises a TypeError or ValueError with a message explaining what's wrong.
         """
         parsed = {}
         for label, value in [("start_date", start_date), ("end_date", end_date)]:
@@ -244,9 +254,10 @@ class BeveridgeFramework:
         how: str = "inner",
     ) -> pd.DataFrame:
         """
+         Purpose
+        ----------
         Combine several series into one DataFrame on a common frequency.
 
-        FRED series come at different cadences (monthly, weekly, quarterly).
         To plot or compute anything joint we need a single shared index.
         This helper resamples each series to `freq` and joins them.
 
@@ -289,6 +300,8 @@ class BeveridgeFramework:
         end_date: str | None = None,
     ) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
         """
+         Purpose
+        ----------
         Identify continuous recession periods from the USREC indicator.
 
         USREC is 1 during NBER recession months and 0 otherwise. This helper
@@ -330,6 +343,8 @@ class BeveridgeFramework:
 
     def _shade_recessions(self, ax, start_date=None, end_date=None) -> None:
         """
+         Purpose
+        ----------
         Draw grey vertical bands on `ax` for each recession episode.
 
         Used internally by every time-series plot so recession context is
@@ -356,6 +371,8 @@ class BeveridgeFramework:
     @staticmethod
     def _zscore(series: pd.Series) -> pd.Series:
         """
+         Purpose
+        ----------
         Standardise a series to zero mean and unit variance.
 
         The stress-index method relies on this: it lets series on very

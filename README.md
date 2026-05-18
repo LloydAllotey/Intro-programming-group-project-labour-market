@@ -50,13 +50,14 @@ This needs a `FRED_API_KEY` in a local `.env` file. Template is `.env.example`.
 
 ```
 ├── data/
-│   ├── build_fred.py             # FRED to DuckDB ETL script
-│   └── fred.db
+│   ├── build_fred.py             # FRED + NCES to DuckDB ETL script
+│   ├── er_diagram.md             # ER diagram (Mermaid)
+│   ├── fred.db
+│   └── star_schema_sketch.png
 ├── src/
 │   └── beveridge_framework.py    # BeveridgeFramework class
 └── notebooks/
     ├── analysis.qmd / .html
-    ├── star_schema_sketch.png
     └── user_guide.qmd / .html
 
 ```
@@ -75,3 +76,4 @@ Time series come from [FRED](https://fred.stlouisfed.org). Master's enrollment i
 | `LNS12032194`  | Employed Part Time for Economic Reasons                              | involuntary part-time (share via PAYEMS)  |
 | `PAYEMS`       | Total Nonfarm Payrolls                                               | denominator for the part-time share       |
 | `LNS14027662`  | Unemployment Rate, Bachelor's+, age 25 and older                     | outside option for the grad-school choice |
+| `MASTERS_ENROLLMENT` | Total postbaccalaureate fall enrollment, US (NCES Digest, Table 303.80) | response variable, the further-education outcome |
