@@ -417,6 +417,9 @@ class BeveridgeFramework:
         Raises:
         ValueError
             If dates are invalid (see `_validate_dates`).
+            If the requested data is outside the data's time period.
+        TypeError
+            If dates aren't strings.
         """
         self._validate_dates(start_date, end_date)
 
@@ -426,6 +429,15 @@ class BeveridgeFramework:
         # inner join keeps only months with data in both series
         df = pd.concat([openings, unrate], axis=1, join="inner")
         df.columns = ["openings", "unemployment"]
+
+        # raise an Error if the figure is empty
+        if df.empty:
+            raise ValueError(
+                f"No overlapping JTSJOR/UNRATE data in the requested window "
+                f"(start_date={start_date}, end_date={end_date}). "
+                "JOLTS data runs from December 2000 to the present; "
+                "choose a range inside that period."
+            )
 
         fig, ax = plt.subplots(figsize=(9, 7))
         scatter = ax.scatter(
@@ -486,7 +498,11 @@ class BeveridgeFramework:
         end_date : str or None, optional
             Inclusive upper bound 'YYYY-MM-DD'.
         include_correlations : bool, default False
-            Set True to return correlation matrix.
+            Set True to return correlation matrix. But only same-frequency series for corr
+            to avoid misleading output by mixing incomparable frequencies. Stats table will have
+            9 rows and corr only 8 because Master Enrollment data is only annually
+            available.
+
 
 
         Returns:
@@ -498,6 +514,8 @@ class BeveridgeFramework:
         Raises:
         ValueError
             If `series_ids` contains an unknown ID, or dates are invalid.
+        TypeError
+            If dates or series aren't strings.
         """
         self._validate_dates(start_date, end_date)
 
@@ -524,8 +542,19 @@ class BeveridgeFramework:
         ).T.round(2)
 
         if include_correlations:
-            df_combined = self.align_frequencies(series_dict, how="inner")
+            # Only draw correlation on monthly series to avoid misleading
+            # output from mixed frequencies (Master's enrollment only annually available)
+            monthly_ids = (
+                self._conn.execute(
+                    "SELECT series_id FROM series WHERE frequency = 'M' "
+                )
+                .df()["series_id"]
+                .tolist()
+            )
+            monthly_dict = {
+                sid: s for sid, s in series_dict.items() if sid in monthly_ids
+            }
+            df_combined = self.align_frequencies(monthly_dict, how="inner")
             corr = df_combined.corr().round(2)
             return stats, corr
-
         return stats
