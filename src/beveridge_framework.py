@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 import duckdb
+import matplotlib.pyplot as plt
 import pandas as pd
 
 
@@ -398,3 +399,179 @@ class BeveridgeFramework:
                 f"Series '{series.name}' has zero standard deviation; cannot z-score."
             )
         return (series - series.mean()) / std
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # OUTPUT METHODS
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def plot_beveridge_curve(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        annotate_recessions: bool = True,
+        cmap: str = "plasma",
+    ):
+        """
+        Plot the Beveridge curve. Job openings rate (JTSJOR) vs unemployment rate (UNRATE).
+
+        The Beveridge curve is a measure for the inverse relationship between the job vacancy
+        and the unemployment rate. The downward sloping curve captures economic cycles in the labor market.
+
+        Parameters:
+        start_date : str or None, optional
+            Inclusive lower bound in 'YYYY-MM-DD' format. JOLTS data starts
+            December 2000. earlier data is clipped.
+        end_date : str or None, optional
+            Inclusive upper bound in 'YYYY-MM-DD' format.
+        annotate_recessions : bool, default True
+            If True draws red rings around recession months.
+        cmap : str, default 'plasma'
+            Any matplotlib colormap name. Points are coloured by year.
+
+        Returns:
+        matplotlib.figure.Figure
+
+        Raises:
+        ValueError
+            If dates are invalid (see `_validate_dates`).
+            If the requested data is outside the data's time period.
+        TypeError
+            If dates aren't strings.
+        """
+        self._validate_dates(start_date, end_date)
+
+        openings = self.load_series("JTSJOR", start_date, end_date)
+        unrate = self.load_series("UNRATE", start_date, end_date)
+
+        # inner join keeps only months with data in both series
+        df = pd.concat([openings, unrate], axis=1, join="inner")
+        df.columns = ["openings", "unemployment"]
+
+        # raise an Error if the figure is empty
+        if df.empty:
+            raise ValueError(
+                f"No overlapping JTSJOR/UNRATE data in the requested window "
+                f"(start_date={start_date}, end_date={end_date}). "
+                "JOLTS data runs from December 2000 to the present; "
+                "choose a range inside that period."
+            )
+
+        fig, ax = plt.subplots(figsize=(9, 7))
+        scatter = ax.scatter(
+            df["unemployment"],
+            df["openings"],
+            c=df.index.year,
+            cmap=cmap,
+            alpha=0.7,
+            s=25,
+        )
+        plt.colorbar(scatter, ax=ax, label="Year")
+
+        if annotate_recessions:
+            rec = self.load_series("USREC", start_date, end_date)
+            rec_aligned = rec.reindex(df.index, fill_value=0)
+            recession_points = df[rec_aligned == 1]
+            if not recession_points.empty:
+                ax.scatter(
+                    recession_points["unemployment"],
+                    recession_points["openings"],
+                    edgecolors="red",
+                    facecolors="none",
+                    s=50,
+                    linewidths=0.9,
+                    label="Recession months",
+                )
+                ax.legend(fontsize=9)
+
+        ax.set_xlabel("Unemployment Rate (%)")
+        ax.set_ylabel("Job Openings Rate (%)")
+        ax.set_title("Beveridge Curve, US 2000-present")
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        return fig
+
+    def descriptive_stats(
+        self,
+        series_ids: list[str] | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        include_correlations: bool = False,
+    ):
+        """
+        Summary statistics: count, mean, std, min, max.
+
+
+
+        The default summarizes every series in the database. series_ids is used
+        to limit the summary.
+        By setting include_correlations=True a second table with the correlations is produced.
+
+
+        Parameters:
+        series_ids : list[str] or None, optional
+            FRED series IDs to summarize. Defaults to every series in the database.
+        start_date : str or None, optional
+            Inclusive lower bound 'YYYY-MM-DD'.
+        end_date : str or None, optional
+            Inclusive upper bound 'YYYY-MM-DD'.
+        include_correlations : bool, default False
+            Set True to return correlation matrix. But only same-frequency series for corr
+            to avoid misleading output by mixing incomparable frequencies. Stats table will have
+            9 rows and corr only 8 because Master Enrollment data is only annually
+            available.
+
+
+
+        Returns:
+        pandas.DataFrame
+            Indexed by series_id, columns: count, mean, std, min, max. We round to 2dp.
+        tuple[pandas.DataFrame, pandas.DataFrame], optional
+            Set include_correlations=True to return this.
+
+        Raises:
+        ValueError
+            If `series_ids` contains an unknown ID, or dates are invalid.
+        TypeError
+            If dates or series aren't strings.
+        """
+        self._validate_dates(start_date, end_date)
+
+        if series_ids is None:
+            series_ids = sorted(self._available_ids)
+        for sid in series_ids:
+            self._validate_series_id(sid)
+
+        series_dict = {
+            sid: self.load_series(sid, start_date, end_date) for sid in series_ids
+        }
+
+        stats = pd.DataFrame(
+            {
+                sid: {
+                    "count": int(s.count()),
+                    "mean": s.mean(),
+                    "std": s.std(),
+                    "min": s.min(),
+                    "max": s.max(),
+                }
+                for sid, s in series_dict.items()
+            }
+        ).T.round(2)
+
+        if include_correlations:
+            # Only draw correlation on monthly series to avoid misleading
+            # output from mixed frequencies (Master's enrollment only annually available)
+            monthly_ids = (
+                self._conn.execute(
+                    "SELECT series_id FROM series WHERE frequency = 'M' "
+                )
+                .df()["series_id"]
+                .tolist()
+            )
+            monthly_dict = {
+                sid: s for sid, s in series_dict.items() if sid in monthly_ids
+            }
+            df_combined = self.align_frequencies(monthly_dict, how="inner")
+            corr = df_combined.corr().round(2)
+            return stats, corr
+        return stats
