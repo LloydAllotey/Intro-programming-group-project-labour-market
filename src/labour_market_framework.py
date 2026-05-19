@@ -666,19 +666,14 @@ class LabourMarketFramework:
         series_id: str = "UNRATE",
         start_date: str | None = None,
         end_date: str | None = None,
-        enrollment_growth: bool = False,
     ):
         """
-        Plot a labour-market series and master's enrollment on a shared time axis.
+        Plot a labour-market series and master's enrollment growth on a shared time axis.
 
-        The FRED series is drawn on the left axis and the hardcoded NCES master's
-        enrollment is drawn on the right axis. NBER recession bands are shaded into the
+        The FRED series is drawn on the left axis and the NCES master's enrollment
+        year-over-year growth is drawn on the right axis. NBER recession bands are shaded into the
         background. This figure adresses the research question by analysing master's enrollment
         against labour market conditions.
-
-        When we set enrollment_growth=TRUE, the right axis shows percentage growth of
-        master's enrollment. Growth is a clearer indication of how enrollment numbers
-        react to changed labour market conditions.
 
         The FRED series is monthly and NCES master's enrollment is annual. To avoid mixing
         frequencies they have seperate y-axes.
@@ -690,13 +685,10 @@ class LabourMarketFramework:
             Inclusive lower bound, "YYYY-MM-DD".
         end_date : str or None, default None
             Inclusive upper bound, "YYYY-MM-DD".
-        enrollment_growth : bool, default False
-            If True, show enrollment as yearly percentage growth
-            instead of number of students.
 
         Returns:
         matplotlib.figure.Figure
-            The figure with the FRED series and enrollment on two seperate y-axes.
+            The figure with the FRED series and enrollment growth on two seperate y-axes.
 
         Raises:
         TypeError
@@ -718,17 +710,10 @@ class LabourMarketFramework:
                 f"end_date={end_date}). Master's enrollment covers 2000 to 2022."
             )
 
-        # Enrollment is shown as a level by default. enrollment_growth switches
-        # the right axis to year-over-year percentage growth (pct_change),
-        # which shows how enrollment responds rather than its long-run level.
-        enrollment_axis_label = "Master's enrollment (number of students)"
-        enrollment_legend = "Master's enrollment"
-        title = f"Master's enrollment and {series_id}"
-        if enrollment_growth:
-            enrollment = enrollment.pct_change() * 100
-            enrollment_axis_label = "Master's enrollment, year-over-year growth (%)"
-            enrollment_legend = "Master's enrollment growth"
-            title = f"Master's enrollment growth and {series_id}"
+        enrollment = enrollment.pct_change() * 100
+        enrollment_axis_label = "Master's enrollment, year-over-year growth (%)"
+        enrollment_legend = "Master's enrollment growth"
+        title = f"Master's enrollment growth and {series_id}"
 
         # twinx() adds a second y-axis that shares the x-axis, so the two
         # series, which are on very different scales, fit on one figure.
