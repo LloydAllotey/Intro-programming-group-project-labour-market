@@ -660,3 +660,97 @@ class LabourMarketFramework:
         z = df.apply(self._zscore)
         weighted_sum = sum(z[sid] * weights[sid] for sid in series_ids)
         return (weighted_sum / total_abs_weight).rename("stress_index")
+
+    def plot_enrollment_overlay(
+        self,
+        series_id: str = "UNRATE",
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ):
+        """
+        Plot a labour-market series alongside the year-over-year growth of master's enrollment.
+
+        The FRED series is drawn on the left axis and the YoY percentage growth of master's
+        enrollment on the right. NBER recession bands are shaded. This figure addresses the
+        research question by analysing how master's enrollment responds to market conditions.
+
+        The FRED series is monthly and NCES master's enrollment is annual. To
+        avoid mixing frequencies they have separate y-axes.
+
+        Parameters:
+        series_id : str, default "UNRATE"
+            The FRED labour-market series that's plotted against enrollment.
+        start_date : str or None, default None
+            Inclusive lower bound, "YYYY-MM-DD".
+        end_date : str or None, default None
+            Inclusive upper bound, "YYYY-MM-DD".
+
+        Returns:
+        matplotlib.figure.Figure
+            The figure with the FRED series and enrollment growth on two separate y-axes.
+
+        Raises:
+        TypeError
+            If start_date or end_date is not a string.
+        ValueError
+            If series_id is unknown, the dates are invalid, or the window
+            contains no data for one of the two series.
+        """
+        # Validate the inputs first, so a mistake is caught before any plotting
+        self._validate_series_id(series_id)
+        self._validate_dates(start_date, end_date)
+
+        indicator = self.load_series(series_id, start_date, end_date)
+        enrollment = self.load_series("MASTERS_ENROLLMENT", start_date, end_date)
+        if indicator.empty or enrollment.empty:
+            raise ValueError(
+                f"No data for '{series_id}' and master's enrollment in the "
+                f"requested window (start_date={start_date}, "
+                f"end_date={end_date}). Master's enrollment covers 2000 to 2022."
+            )
+
+        # Convert enrollment to YoY percentage growth
+        enrollment = enrollment.pct_change() * 100
+        enrollment_axis_label = "Master's enrollment, year-over-year growth (%)"
+        enrollment_legend = "Master's enrollment growth"
+        title = f"Master's enrollment growth and {series_id}"
+
+        # twinx() adds a second y-axis that shares the x-axis, so the two
+        # series, which are on very different scales, fit on one figure.
+        fig, ax_indicator = plt.subplots(figsize=(10, 5))
+        ax_enrollment = ax_indicator.twinx()
+
+        # Shade the recessions first so the lines are drawn on top of them.
+        self._shade_recessions(ax_indicator, start_date, end_date)
+
+        indicator_line = ax_indicator.plot(
+            indicator.index,
+            indicator.values,
+            color="navy",
+            linewidth=1.5,
+            label=series_id,
+        )
+        enrollment_line = ax_enrollment.plot(
+            enrollment.index,
+            enrollment.values,
+            color="darkred",
+            linewidth=1.5,
+            linestyle="--",
+            label=enrollment_legend,
+        )
+
+        ax_indicator.set_xlabel("Year")
+        ax_indicator.set_ylabel(series_id, color="navy")
+        ax_enrollment.set_ylabel(enrollment_axis_label, color="darkred")
+        ax_indicator.set_title(title)
+
+        # Combine both lines into one legend
+        ax_indicator.legend(
+            indicator_line + enrollment_line,
+            [series_id, enrollment_legend],
+            fontsize=8,
+            loc="upper right",
+        )
+        ax_indicator.grid(True, alpha=0.3)
+        fig.tight_layout()
+        return fig
