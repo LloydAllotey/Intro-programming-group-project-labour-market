@@ -754,3 +754,92 @@ class LabourMarketFramework:
         ax_indicator.grid(True, alpha=0.3)
         fig.tight_layout()
         return fig
+
+    def plot_stress_index_vs_enrollment_growth(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ):
+        """
+        Plot the labour-market stress index alongside year-over-year master's enrollment growth.
+
+        The stress index is the monthly composite from `compute_stress_index`.
+        Master's enrollment is the annual NCES series. We shows its YoY percentage growth.
+        The two live on separate y-axes as their frequencies and units differ.
+
+        The figure speaks directly to the research question:
+        does enrollment respond to broad labour-market deterioration
+
+        Parameters:
+        start_date : str or None, default None
+            Inclusive lower bound, "YYYY-MM-DD".
+        end_date : str or None, default None
+            Inclusive upper bound, "YYYY-MM-DD".
+
+        Returns:
+        matplotlib.figure.Figure
+            Figure with the index and enrollment growth on two y-axes.
+
+        Raises:
+        TypeError
+            If start_date or end_date is not a string.
+        ValueError
+            If dates are invalid, or window contains no data for any of the series.
+        """
+        # Validate first so a bad date is caught before any data work.
+        self._validate_dates(start_date, end_date)
+
+        stress = self.compute_stress_index(start_date=start_date, end_date=end_date)
+        enrollment = self.load_series("MASTERS_ENROLLMENT", start_date, end_date)
+        if stress.empty or enrollment.empty:
+            raise ValueError(
+                "No data for stress index and master's enrollment in the "
+                f"requested window (start_date={start_date}, "
+                f"end_date={end_date}). Master's enrollment covers 2000 to 2022."
+            )
+
+        # Convert enrollment to YoY % growth, with first obs. becoming NaN, which is skipped silently
+        enrollment_growth = enrollment.pct_change() * 100
+
+        fig, ax_stress = plt.subplots(figsize=(10, 5))
+        ax_enrollment = ax_stress.twinx()
+
+        self._shade_recessions(ax_stress, start_date, end_date)
+
+        stress_line = ax_stress.plot(
+            stress.index,
+            stress.values,
+            color="navy",
+            linewidth=1.5,
+            label="Stress index",
+        )
+        enrollment_line = ax_enrollment.plot(
+            enrollment_growth.index,
+            enrollment_growth.values,
+            color="darkred",
+            linewidth=1.5,
+            linestyle="--",
+            marker="o",
+            markersize=4,
+            label="Master's enrollment growth",
+        )
+
+        ax_stress.set_xlabel("Year")
+        ax_stress.set_ylabel("Stress index (z-score, higher = worse)", color="navy")
+        ax_enrollment.set_ylabel(
+            "Master's enrollment, year-over-year growth (%)", color="darkred"
+        )
+        ax_stress.set_title(
+            "Labour-market stress index and master's enrollment growth"
+        )
+
+        # One legend for both axes
+        ax_stress.legend(
+            stress_line + enrollment_line,
+            ["Stress index", "Master's enrollment growth"],
+            fontsize=8,
+            loc="upper right",
+        )
+        ax_stress.grid(True, alpha=0.3)
+        fig.tight_layout()
+        return fig
