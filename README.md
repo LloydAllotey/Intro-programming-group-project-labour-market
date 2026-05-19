@@ -9,7 +9,7 @@
 
 **Research question.** Do young Americans pursue further education in response to deteriorating labour market conditions in the United States since 2000?
 
-The Beveridge curve plots job openings against unemployment. It gives a quick visual read on how tight the labour market is. We plot the curve for US data since 2000. We also overlay master's enrollment over the unemployment rate and our own "stress index" measuring the condition of the labour market, to check whether downturns push people back into school. The stress index combines several FRED series, with weights the user can change. The three recessions in the window (2001, 2008, 2020) are also taken into consideration by displaying them as a vertical grey band. The class is written so the same logic can be reused for a different recession, country or sector by swapping the input data.
+The Beveridge curve plots job openings against unemployment. It gives a quick visual read on how tight the labour market is. We plot the curve for US data since 2000. We also overlay master's enrollment over the unemployment rate and our own "stress index" measuring the condition of the labour market, to check whether downturns push people back into school. The stress index combines several FRED series, with weights the user can change. The three recessions in the window (2001, 2008, 2020) are also taken into consideration by displaying them as a vertical grey band. The class is written so the same logic can be reused for a different country or sector by swapping the input data.
 
 ## Requirements
 
