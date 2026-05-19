@@ -668,15 +668,14 @@ class LabourMarketFramework:
         end_date: str | None = None,
     ):
         """
-        Plot a labour-market series and master's enrollment growth on a shared time axis.
+        Plot a labour-market series alongside the year-over-year growth of master's enrollment.
 
-        The FRED series is drawn on the left axis and the NCES master's enrollment
-        year-over-year growth is drawn on the right axis. NBER recession bands are shaded into the
-        background. This figure adresses the research question by analysing master's enrollment
-        against labour market conditions.
+        The FRED series is drawn on the left axis and the YoY percentage growth of master's
+        enrollment on the right. NBER recession bands are shaded. This figure addresses the
+        research question by analysing how master's enrollment responds to market conditions.
 
-        The FRED series is monthly and NCES master's enrollment is annual. To avoid mixing
-        frequencies they have seperate y-axes.
+        The FRED series is monthly and NCES master's enrollment is annual. To
+        avoid mixing frequencies they have separate y-axes.
 
         Parameters:
         series_id : str, default "UNRATE"
@@ -688,7 +687,7 @@ class LabourMarketFramework:
 
         Returns:
         matplotlib.figure.Figure
-            The figure with the FRED series and enrollment growth on two seperate y-axes.
+            The figure with the FRED series and enrollment growth on two separate y-axes.
 
         Raises:
         TypeError
@@ -697,7 +696,7 @@ class LabourMarketFramework:
             If series_id is unknown, the dates are invalid, or the window
             contains no data for one of the two series.
         """
-        # Validate the inputs first, so a mistake is caught before any plotting.
+        # Validate the inputs first, so a mistake is caught before any plotting
         self._validate_series_id(series_id)
         self._validate_dates(start_date, end_date)
 
@@ -710,6 +709,7 @@ class LabourMarketFramework:
                 f"end_date={end_date}). Master's enrollment covers 2000 to 2022."
             )
 
+        # Convert enrollment to YoY percentage growth
         enrollment = enrollment.pct_change() * 100
         enrollment_axis_label = "Master's enrollment, year-over-year growth (%)"
         enrollment_legend = "Master's enrollment growth"
@@ -744,7 +744,7 @@ class LabourMarketFramework:
         ax_enrollment.set_ylabel(enrollment_axis_label, color="darkred")
         ax_indicator.set_title(title)
 
-        # Each axis holds its own line, so combine both into one legend.
+        # Combine both lines into one legend
         ax_indicator.legend(
             indicator_line + enrollment_line,
             [series_id, enrollment_legend],
