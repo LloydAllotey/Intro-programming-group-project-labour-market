@@ -574,3 +574,89 @@ class LabourMarketFramework:
             corr = df_combined.corr().round(2)
             return stats, corr
         return stats
+
+    def compute_stress_index(
+        self,
+        series_ids: list[str] | None = None,
+        weights: dict[str, float] | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        freq: str = "MS",
+    ) -> pd.Series:
+        """
+        Purpose
+        ----------
+        Aggregate labour-market stress index built from several FRED series.
+
+        Each input series is z-scored (zero mean, unit variance) so its scale
+        does not dominate. The z-scored series are then combined linearly using
+        `weights`. Our default sign convention is: series where higher values
+        mean a worse market get a positive weight; series where higher values mean
+        a better market get a negative weight. The output is therefore always
+        "higher = worse labour-market conditions".
+
+        Parameters
+        ----------
+        series_ids : list[str] or None, optional
+            Series to combine. Defaults to every series with
+            `category == 'stress_index'` in the database.
+        weights : dict[str, float] or None, optional
+            `{series_id: weight}`. Must have exactly one entry per `series_id`.
+            Defaults to ±1 based on the series' role (we use heuristic equal weighting —
+            no series is considered more important than another).
+        start_date : str or None, optional
+            Inclusive lower bound 'YYYY-MM-DD'.
+        end_date : str or None, optional
+            Inclusive upper bound 'YYYY-MM-DD'.
+        freq : str, default 'MS'
+            Target frequency for `align_frequencies`. Any pandas offset alias works.
+
+        Returns
+        -------
+        pandas.Series
+            Monthly stress index named 'stress_index'.
+
+        Raises
+        ------
+        ValueError
+            If `weights` keys do not match `series_ids`, if the sum of absolute
+            weights is zero, or if dates are invalid.
+        """
+        self._validate_dates(start_date, end_date)
+
+        if series_ids is None:
+            series_ids = self.available_series("stress_index")["series_id"].tolist()
+        for sid in series_ids:
+            self._validate_series_id(sid)
+
+        # Default sign convention:
+        _DEFAULT_SIGNS = {
+            "UNRATE": +1,  # unemployment rate: higher is worse
+            "LNS12032194": +1,  # involuntary part-time work: higher is worse
+            "LNS14027662": +1,  # unemployment, bachelor's degree+: higher is worse
+            "JTSJOR": -1,  # job openings rate: higher is better
+            "JTSHIL": -1,  # hires rate: higher is better
+            "JTSQUR": -1,  # quits rate (worker confidence): higher is better
+            "PAYEMS": -1,  # nonfarm payrolls: higher is better
+        }
+        if weights is None:
+            weights = {sid: _DEFAULT_SIGNS.get(sid, 1.0) for sid in series_ids}
+
+        if set(weights.keys()) != set(series_ids):
+            raise ValueError(
+                f"weights keys {sorted(weights.keys())} must match series_ids "
+                f"{sorted(series_ids)} exactly."
+            )
+        total_abs_weight = sum(abs(w) for w in weights.values())
+        if total_abs_weight == 0:
+            raise ValueError("Sum of absolute weights is zero, index is undefined.")
+
+        series_dict = {
+            sid: self.load_series(sid, start_date, end_date) for sid in series_ids
+        }
+        df = self.align_frequencies(series_dict, freq=freq, how="inner")
+
+        # z-score each column, add the weights and combine them into the index.
+        z = df.apply(self._zscore)
+        weighted_sum = sum(z[sid] * weights[sid] for sid in series_ids)
+        return (weighted_sum / total_abs_weight).rename("stress_index")
