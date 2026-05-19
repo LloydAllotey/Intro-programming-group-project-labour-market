@@ -1,6 +1,5 @@
 """
-BeveridgeFramework — a reusable toolkit for labour-market analysis built around
-the Beveridge curve (job openings vs. unemployment).
+LabourMarketFramework — a reusable toolkit for labour-market analysis built with chosen variables.
 
 This module defines the class. It does not contain any analysis script; the
 notebooks instantiate it and call its methods.
@@ -8,7 +7,7 @@ notebooks instantiate it and call its methods.
 The class is layered:
     1. Data access   — read series and metadata from the DuckDB database.
     2. Helpers       — date validation, frequency alignment, recession tagging.
-    3. Output methods (added in later PRs) — figures, tables, summary metrics.
+    3. Output methods — figures, tables, summary metrics.
 """
 
 from datetime import datetime
@@ -19,11 +18,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
-class BeveridgeFramework:
+class LabourMarketFramework:
     """
     Purpose
     ----------
-    Toolkit for analysing US labour-market conditions through the Beveridge curve.
+    Toolkit for analysing US labour-market conditions through chosen variables.
 
     The class reads from a local DuckDB database built by `data/build_fred.py`,
     which holds the FRED series plus the NCES enrollment series. Once
