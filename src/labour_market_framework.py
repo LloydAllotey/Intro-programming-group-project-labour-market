@@ -495,16 +495,16 @@ class LabourMarketFramework:
         start_date: str | None = None,
         end_date: str | None = None,
         include_correlations: bool = False,
+        corr_freq: str = "monthly",
     ):
         """
-        Summary statistics: count, mean, std, min, max.
+        Summary statistics for the requested series: count, mean, std, min, max.
 
-
-
-        The default summarizes every series in the database. series_ids is used
-        to limit the summary.
-        By setting include_correlations=True a second table with the correlations is produced.
-
+        A correlation needs every series on one frequency, which corr_freq sets.
+        "monthly" correlates monthly series only and drops the annual MASTERS_ENROLLMENT,
+        since putting an annual series into a monthly corr. would need interpolation and so invent data.
+        "annual" downsamples every series to annual means instead. This keeps MASTERS_ENROLLMENT
+        in the matrix. The summary table itself is unchanged by corr_freq.
 
         Parameters:
         series_ids : list[str] or None, optional
@@ -514,26 +514,29 @@ class LabourMarketFramework:
         end_date : str or None, optional
             Inclusive upper bound 'YYYY-MM-DD'.
         include_correlations : bool, default False
-            Set True to return correlation matrix. But only same-frequency series for corr
-            to avoid misleading output by mixing incomparable frequencies. Stats table will have
-            9 rows and corr only 8 because Master Enrollment data is only annually
-            available.
-
-
+            If True, also return the correlation matrix.
+        corr_freq : str, default "monthly"
+            "monthly" or "annual". Use "annual" to include MASTERS_ENROLLMENT in
+            the correlation (downsamples every series to annual means).
 
         Returns:
         pandas.DataFrame
-            Indexed by series_id, columns: count, mean, std, min, max. We round to 2dp.
-        tuple[pandas.DataFrame, pandas.DataFrame], optional
-            Set include_correlations=True to return this.
+            summary table, indexed by series_id, columns count, mean, std, min and max, round 0.2.
+        tuple[pandas.DataFrame, pandas.DataFrame]
+            When include_correlations=True: summary table and correlation matrix
 
         Raises:
         ValueError
-            If `series_ids` contains an unknown ID, or dates are invalid.
+            If series_ids contains an unknown ID, corr_freq is not "monthly"
+            or "annual", or the dates are invalid.
         TypeError
-            If dates or series aren't strings.
+            If the dates or series_ids entries are not strings.
         """
         self._validate_dates(start_date, end_date)
+        if corr_freq not in ("monthly", "annual"):
+            raise ValueError(
+                f"corr_freq must be 'monthly' or 'annual', got '{corr_freq}'."
+            )
 
         if series_ids is None:
             series_ids = sorted(self._available_ids)
@@ -558,19 +561,26 @@ class LabourMarketFramework:
         ).T.round(2)
 
         if include_correlations:
-            # Only draw correlation on monthly series to avoid misleading
-            # output from mixed frequencies (Master's enrollment only annually available)
-            monthly_ids = (
-                self._conn.execute(
-                    "SELECT series_id FROM series WHERE frequency = 'M' "
+            if corr_freq == "monthly":
+                # Monthly corr.: keep only the monthly series. An annual series
+                # cannot enter a monthly corr. without interpolation (inventing data)
+                monthly_ids = (
+                    self._conn.execute(
+                        "SELECT series_id FROM series WHERE frequency = 'M'"
+                    )
+                    .df()["series_id"]
+                    .tolist()
                 )
-                .df()["series_id"]
-                .tolist()
-            )
-            monthly_dict = {
-                sid: s for sid, s in series_dict.items() if sid in monthly_ids
-            }
-            df_combined = self.align_frequencies(monthly_dict, how="inner")
+                monthly_dict = {
+                    sid: s for sid, s in series_dict.items() if sid in monthly_ids
+                }
+                df_combined = self.align_frequencies(monthly_dict, how="inner")
+            else:
+                # Annual corr.: downsample every series to annual means
+                # (year start). This retains annual MASTERS_ENROLLMENT.
+                df_combined = self.align_frequencies(
+                    series_dict, freq="YS", how="inner"
+                )
             corr = df_combined.corr().round(2)
             return stats, corr
         return stats
