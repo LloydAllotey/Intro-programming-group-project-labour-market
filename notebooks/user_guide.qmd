@@ -1,30 +1,641 @@
 ---
-# YAML Front Matter — controls the document's metadata and output settings.
-# Copy (and adapt) this for your own notebooks.
-title: "User guide"
+title: "LabourMarketFramework -- User Guide"
+subtitle: "A Python toolkit for US labour-market and further-education analysis"
 author:
-  - "Author NumberOne"
-  - "Author NumberTwo"
-date: today                  # Automatically uses the date you render the document
+  - "Allotey Kelvin, Lloyd"
+  - "Braun, Finn"
+  - "Bruehwiler, Nils"
+  - "Troillet, Cyril"
+date: "today"
 format:
   html:
-    toc: true                # Adds a Table of Contents on the side
-    toc-depth: 4             # Includes headings up to level 4 (####) in the TOC
-    number-sections: false   # Numbers your sections automatically if set to true
-    code-fold: false         # Keeps your code visible (set to true to hide it)
-    code-annotations: hover  # Reveals code annotations when hovering
-    theme: cosmo             # A clean, built-in look
-    embed-resources: true    # Packages everything into a single self-contained HTML file
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    embed-resources: true
+    fig-align: center
+    fig-cap-location: bottom
+    tbl-cap-location: top
+    code-fold: false
+    code-tools: false
 execute:
-  echo: true                 # Shows your code in the output
-  error: true                # Renders the document even if a code chunk produces an error
-  freeze: false              # Re-runs all cells on every render (no caching)
-jupyter: python3             # Tells Quarto to use your Python 3 kernel
+  echo: true
+  warning: false
+  message: false
+editor:
+  markdown:
+    wrap: 72
 ---
 
-The user guide must include:
+## 0 Overview
 
-- Class overview: A brief description of the class and the economic topic it covers.
-- Getting started: Instructions for any setup required (such as handling the FRED API key) and a working example showing how to instantiate the class.
-- Method documentation: Explanations of each available method, the arguments they accept, and the outputs they return.
-- Example code: For your most important methods, provide short, isolated code examples showing how to use them and what output to expect.
+`LabourMarketFramework` is a Python class for analysing US labour-market
+conditions and the relationship to further education since 2000. The
+class runs through a local DuckDB database with three functionality
+layers: data access, helpers, and output methods. There are five output
+methods that produce figures and tables visible in the analysis brief.
+
+Topic and research question:
+
+> Do young Americans pursue further education in response to
+> deteriorating labour market conditions in the United States since
+> 2000?
+
+The class is database-agnostic. You can swap the DuckDB file to analyze
+other countries, recessions or sectors. The methods will work the same
+without having to adjust code.
+
+## 1 Getting started
+
+### 1. 1 Requirements
+
+-   Python 3.13 or later
+-   uv (Python environment and dependency manager)
+-   A free FRED API key
+
+### 1.2 Install
+
+From the repository root:
+
+``` bash
+uv sync
+```
+
+This creates `.venv/` and installs every runtime dependency
+
+(`duckdb`, `pandas`, `matplotlib`, `fredapi`, `python-dotenv`,
+`ipykernel`, `jupyter`).
+
+### 1.3 FRED API key
+
+`data/build_fred.py` reads your key from a `.env` file at the repository
+root. A template `.env.example` is in the repo. Create your own `.env`:
+
+```         
+FRED_API_KEY=your_actual_key_here
+```
+
+`.env` is in `.gitignore` so your key stays local and protected.
+
+### 1.4 Build the database (one time process)
+
+``` bash
+uv run python data/build_fred.py
+```
+
+From the repository root run the script below. The script fetches the
+selected series from the FRED, joins the master's enrollment table, and
+creates `data/fred.db` (the database). The committed `fred.db` already
+contains everything. This step is only necessary if you want to start
+from scratch.
+
+Once this step is completed the class reads only from the database. No
+notebook ever calls the FRED API or reads a CSV.
+
+### 1.5 First call
+
+```{python}
+#| label: setup
+import sys
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+
+sys.path.insert(0, str(Path("..") / "src"))
+from labour_market_framework import LabourMarketFramework
+
+lmf = LabourMarketFramework(db_path=Path("..") / "data" / "fred.db")
+```
+
+`lmf` is the class instance you call methods on. The constructor opens a
+read only connection to the database and caches the list of available
+series IDs, so subsequent input validation is fast.
+
+## 2. How the class is organised
+
+The **class** has three layers, grouped under section comments in
+`src/labour_market_framework.py`:
+
+1.  **Data access** - These read from the DuckDB database (chap. 3.2)
+
+    -   `available_series`, `load_series`, `load_category`.
+
+2.  **Helpers** - They clean, transform and reshape series so output
+    methods can stay focused (chap. 3.3)
+
+    -   `align_frequencies`, `tag_recession_episodes`, plus internal
+        validators and the recession-shading and z-score utilities.
+
+3.  **Output methods** - These produce the figures, tables and computed
+    metrics (chap. 4)
+
+    1.  `plot_beveridge_curve`
+
+    2.  `descriptive_stats`
+
+    3.  `compute_stress_index`
+
+    4.  `plot_enrollment_overlay`
+
+    5.  `plot_stress_index_vs_enrollment`
+
+    Most users only ever call output methods directly. The data access
+    and helper methods are exposed for cases where you want to query the
+    database yourself or build a custom view.
+
+## 3. Method reference
+
+Every public method on the class is listed here with its signature,
+purpose, arguments, return value and the exceptions it raises. Examples
+for the output methods follow in the next section.
+
+### 3.1 Constructor and lifecycle
+
+#### \[1\] **`LabourMarketFramework(db_path="data/fred.db")`**
+
+-   Open a read only DuckDB connection at `db_path` and cache the list
+    of available series IDs for fast validation later.
+
+**Arguments**
+
+-   `db_path : str | pathlib.Path`, default `"data/fred.db"`. Path to
+    the DuckDB database.
+
+**Returns**
+
+-   The class instance.
+
+**Raises**
+
+-   `FileNotFoundError` if the database file does not exist. Error
+    message hints at running `data/build_fred.py`.
+
+#### \[2\] **`close()`**
+
+-   Close the underlying DuckDB connection.
+
+**Arguments/Return/Raises**: none.
+
+### 3.2 Data access
+
+#### \[3\] **`available_series(category=None)`**
+
+-   Return metadata for every series in the database, or filter to one
+    category.
+
+**Arguments**
+
+-   `category : str | None`, default `None`. If given, restricts the
+    result to series with this category. Valid categories:
+    `'beveridge'`, `'stress_index'`, `'recession'`, `'education'`,
+    `'enrollment'`.
+
+**Returns**
+
+-   `pandas.DataFrame` with columns `series_id`, `title`, `units`,
+    `frequency`, `seasonal_adjustment`, `category`.
+
+**Raises**
+
+-   `ValueError` if the category is not present in the database (error
+    message lists the valid options).
+
+#### \[4\] **`load_series(series_id, start_date=None, end_date=None)`**
+
+-   Read one time series from the database, optionally clipped by date.
+
+**Arguments**
+
+-   `series_id : str`. Must exist in the database.
+-   `start_date : str | None`, default `None`. Inclusive lower bound,
+    `'YYYY-MM-DD'`.
+-   `end_date : str | None`, default `None`. Inclusive upper bound,
+    `'YYYY-MM-DD'`.
+
+**Returns**
+
+-   `pandas.Series` named after `series_id`, indexed by `DatetimeIndex`.
+
+**Raises**
+
+-   `TypeError` if `series_id` or dates are not strings; `ValueError` if
+    `series_id` is unknown or dates are malformed or inverted.
+    `start_date` must be strictly before `end_date`.
+
+#### \[5\] **`load_category(category, start_date=None, end_date=None)`**
+
+-   Load every series in a category at once.
+
+**Arguments**
+
+-   `category : str`. One of the valid categories above.
+-   `start_date`, `end_date : str | None`, default `None`. Same as
+    `load_series`.
+
+**Returns**
+
+-   `dict[str, pandas.Series]` keyed by `series_id`.
+
+**Raises**
+
+-   propagated from `available_series` and `load_series`.
+
+### 3.3 Helpers
+
+#### \[6\] **`align_frequencies(series_dict, freq="MS", how="inner")`**
+
+-   Resample multiple series to a common frequency and join them into
+    one DataFrame.
+
+**Arguments**
+
+-   `series_dict : dict[str, pandas.Series]`.
+-   `freq : str`, default `"MS"`. Any pandas offset alias works (`"MS"`
+    = month start, `"YS"` = year start, etc.).
+-   `how : str`, default `"inner"`. Must be `"inner"` or `"outer"`.
+
+**Returns**
+
+-   `pandas.DataFrame` with one column per series.
+
+**Raises**
+
+-   `ValueError` if `series_dict` is empty, if `how` is not `"inner"` or
+    `"outer"`, or if an annual series is inner-joined at a monthly
+    `freq`. The last case is caught explicitly because the inner join
+    would silently drop almost all rows. To align annual data with
+    monthly data, pass `freq="YS"` (downsample to annual means) or
+    `how="outer"` (keep the upsampled NaN months visible).
+
+#### \[7\] **`tag_recession_episodes(start_date=None, end_date=None)`**
+
+-   Identify continuous NBER recession periods from the `USREC` series.
+
+-   Useful if you want the recession dates as data (for example, to
+    shade your own plot).
+
+**Arguments**
+
+-   `start_date`, `end_date : str | None`, default `None`. Restrict the
+    scan window.
+
+**Returns**
+
+-   `list[tuple[pandas.Timestamp, pandas.Timestamp]]`, one tuple per
+    episode in chronological order.
+
+**Raises**
+
+-   Propagated from `load_series` and `_validate_dates`.
+
+### 3.4 Internal helpers
+
+Three private helpers exist on the class but should not be called
+directly:
+
+\[8\] **`_validate_series_id`**: Checks that a series ID exists in the
+DB
+
+\[9\] **`_validate_dates`**: Internal check that date strings parse and
+are ordered
+
+\[10\] **`_shade_recessions`**: Draw grey vertical bands for each
+recession episode
+
+They support the input-validation, recession-shading.
+
+\[11\] **`_zscore`**: Standardises a series to mean 0 and sd 1
+
+z-scoring is used by the public methods.
+
+## 4. Output methods and examples
+
+Every example below uses the `lmf` instance from the **First call**
+section above. The examples are independent: skip directly to the method
+you care about.
+
+### Output 1: Beveridge curve
+
+#### \[12\] **`plot_beveridge_curve`**
+
+Plot the Beveridge curve, the job openings rate (`JTSJOR`) against the
+unemployment rate (`UNRATE`). Points are coloured by year, recession
+months can be ringed in red.
+
+**Signature:**
+
+``` python
+plot_beveridge_curve(
+    start_date=None,
+    end_date=None,
+    annotate_recessions=True,
+    cmap="plasma",
+)
+```
+
+**Arguments**
+
+-   `start_date`, `end_date : str | None`, default `None`. Date window.
+-   `annotate_recessions : bool`, default `True`. Ring recession months
+    in red.
+-   `cmap : str`, default `"plasma"`. Any matplotlib colormap name.
+
+**Returns**
+
+-   `matplotlib.figure.Figure`.
+
+**Raises**
+
+-   `ValueError` on bad dates or empty window (JOLTS data starts
+    December 2000).
+
+**Default call:**
+
+```{python}
+#| label: ex-beveridge-default
+#| fig-cap: "Default: full sample, points coloured by year, recession months ringed in red."
+fig = lmf.plot_beveridge_curve()
+```
+
+**Variant:**
+
+*(restricted window, no recession rings, different colormap)*
+
+```{python}
+#| label: ex-beveridge-window
+#| fig-cap: "2007-2012 window, no recession rings, viridis colormap."
+fig = lmf.plot_beveridge_curve(
+    start_date="2007-01-01",
+    end_date="2012-12-31",
+    annotate_recessions=False,
+    cmap="viridis",
+)
+```
+
+### Output 2: Descriptive statistics
+
+#### \[13\] **`descriptive_stats`**
+
+Summary table for every series (count, mean, standard deviation, min,
+max), with an optional correlation matrix.
+
+**Signature:**
+
+``` python
+descriptive_stats(
+    series_ids=None,
+    start_date=None,
+    end_date=None,
+    include_correlations=False,
+)
+```
+
+**Arguments**
+
+-   `series_ids : list[str] | None`, default `None` (every series).
+-   `start_date`, `end_date : str | None`, default `None`.
+-   `include_correlations : bool`, default `False`. If `True`, also
+    returns the correlation matrix. The matrix covers only the monthly
+    series and is 8x8; the annual `MASTERS_ENROLLMENT` is dropped to
+    avoid mixing frequencies.
+
+**Returns**
+
+-   `pandas.DataFrame` (stats only), or `(stats, corr)` tuple when
+    `include_correlations=True`.
+
+**Raises**
+
+-   `ValueError` on unknown `series_ids` or bad dates.
+
+**Default call:**
+
+```{python}
+#| label: ex-descriptive-default
+#| tbl-cap: "Default: summary statistics for every series in the database."
+lmf.descriptive_stats()
+```
+
+**Variant:**
+
+*(With the correlation matrix)*
+
+```{python}
+#| label: ex-descriptive-corr
+#| tbl-cap: "Correlation matrix of the monthly series (8x8)."
+_, corr = lmf.descriptive_stats(include_correlations=True)
+corr
+```
+
+### Output 3: Composite stress index
+
+#### \[14\] **`compute_stress_index`**
+
+Aggregate labour-market stress index: a z-scored composite of several
+FRED series. Higher index-values translate to worse conditions.
+
+**Signature:**
+
+``` python
+compute_stress_index(
+    series_ids=None,
+    weights=None,
+    start_date=None,
+    end_date=None,
+    freq="MS",
+)
+```
+
+**Arguments**
+
+-   `series_ids : list[str] | None`, default `None` (every series with
+    `category == 'stress_index'`).
+-   `weights : dict[str, float] | None`, default `None`. Map each series
+    id to a weight. If omitted, the class applies its default signs:
+    `UNRATE`, `LNS12032194`, `LNS14027662` get `+1`; `JTSJOR`, `JTSHIL`,
+    `JTSQUR`, `PAYEMS` get `-1`.
+-   `start_date`, `end_date : str | None`, default `None`.
+-   `freq : str`, default `"MS"`. Target frequency for the internal
+    `align_frequencies` call.
+
+**Returns**
+
+-   `pandas.Series` named `"stress_index"`.
+
+**Raises**
+
+-   `ValueError` if `weights` is `None` and any requested `series_id`
+    lacks a default sign; if the keys of `weights` do not match
+    `series_ids`, if the sum of absolute weights is zero, or if dates
+    are invalid.
+
+**Default call:**
+
+*(the project's standard index)*
+
+```{python}
+#| label: ex-stress-default
+stress = lmf.compute_stress_index()
+print(f"Length: {len(stress)} monthly observations")
+print(f"Range:  {stress.index.min().date()} to {stress.index.max().date()}")
+print(f"Mean:   {stress.mean():.3f}")
+print(f"Stdev:  {stress.std():.3f}")
+print(stress.tail())
+```
+
+**Variant:**
+
+*(Custom basket and explicit weights - two series, equal weighting)*
+
+```{python}
+#| label: ex-stress-custom
+custom = lmf.compute_stress_index(
+    series_ids=["UNRATE", "JTSJOR"],
+    weights={"UNRATE": +1.0, "JTSJOR": -1.0},
+)
+print(custom.tail())
+```
+
+### Output 4: Enrollment overlay
+
+#### \[15\] **`plot_enrollment_overlay`**
+
+Overlay one FRED series and the YoY growth (%) of master's enrollment on
+twin y-axes, with NBER recession bands shaded.
+
+**Signature:**
+
+``` python
+plot_enrollment_overlay(
+    series_id="UNRATE",
+    start_date=None,
+    end_date=None,
+)
+```
+
+**Arguments**
+
+-   `series_id : str`, default `"UNRATE"`. The FRED series on the left
+    axis.
+-   `start_date`, `end_date : str | None`, default `None`.
+
+**Returns**
+
+-   `matplotlib.figure.Figure`.
+
+**Raises**
+
+-   `ValueError` if `series_id` is unknown, dates are invalid, or the
+    window contains no data for one of the two series.
+
+**Default call:**
+
+*(UNRATE versus enrollment growth)*
+
+```{python}
+#| label: ex-overlay-default
+#| fig-cap: "UNRATE on the left axis, master's enrollment year-over-year growth on the right."
+fig = lmf.plot_enrollment_overlay()
+```
+
+**Variant:**
+
+*(different FRED series on the left axis)*
+
+```{python}
+#| label: ex-overlay-altseries
+#| fig-cap: "JTSJOR on the left axis, master's enrollment year-over-year growth on the right."
+fig = lmf.plot_enrollment_overlay(series_id="JTSJOR")
+```
+
+### Output 5: Stress index versus enrollment
+
+#### \[16\] **`plot_stress_index_vs_enrollment`**
+
+The broader companion to `plot_enrollment_overlay`. The left axis is the
+full composite stress index instead of a single FRED series.
+
+**Signature:**
+
+``` python
+plot_stress_index_vs_enrollment(
+    start_date=None,
+    end_date=None,
+    enrollment_metric="growth",
+)
+```
+
+**Arguments**
+
+-   `start_date`, `end_date : str | None`, default `None`.
+-   `enrollment_metric : str`, default `"growth"`. Same values as
+    `plot_enrollment_overlay`.
+-   This mechanism allows for the development of the class (e.g. future
+    inclusion of metric: log growth)
+
+**Returns**
+
+-   `matplotlib.figure.Figure`.
+
+**Raises**
+
+-   `ValueError` on bad dates, empty window, or unsupported
+    `enrollment_metric`.
+
+**Default call:**
+
+*(growth view of enrollment)*
+
+```{python}
+#| label: ex-stress-overlay-default
+#| fig-cap: "Composite stress index on the left axis, master's enrollment growth on the right."
+fig = lmf.plot_stress_index_vs_enrollment()
+```
+
+**Variant:**
+
+*(level view of enrollment)*
+
+```{python}
+#| label: ex-stress-overlay-level
+#| fig-cap: "Composite stress index on the left axis, master's enrollment level (millions of students) on the right."
+fig = lmf.plot_stress_index_vs_enrollment(enrollment_metric="level")
+```
+
+## 5. Series catalogue
+
+The committed database contains nine series, grouped into five
+categories. The category is what `available_series(category=...)` and
+`load_category(category=...)` filter on.
+
+| Category       | Series IDs                                  |
+|----------------|---------------------------------------------|
+| `beveridge`    | `JTSJOR`, `UNRATE`                          |
+| `stress_index` | `JTSQUR`, `JTSHIL`, `LNS12032194`, `PAYEMS` |
+| `recession`    | `USREC`                                     |
+| `education`    | `LNS14027662`                               |
+| `enrollment`   | `MASTERS_ENROLLMENT`                        |
+
+## 6. Errors you might see
+
+Each method validates its inputs before doing any work and raises with a
+message that explains what went wrong and how to fix it. Four common
+cases:
+
+-   **`FileNotFoundError`** at instantiation: the database is not where
+    `db_path` points. Run `uv run python data/build_fred.py` from the
+    repo root to (re)build it.
+-   **`ValueError: Series 'X' not in database. Available: [...]`**: you
+    passed a `series_id` that does not exist. The error lists every
+    valid ID.
+-   **`ValueError: start_date 'X' is not a valid date. Expected     format: YYYY-MM-DD.`**:
+    a date argument is malformed. Use the `'YYYY-MM-DD'` format.
+-   **`ValueError: enrollment_metric must be 'growth' or 'level', got     'X'.`**
+    (or similar for `how` in `align_frequencies`): a string argument is
+    outside the allowed set. The error lists the allowed values.
+
+```{python}
+#| label: cleanup
+#| echo: false
+lmf.close()
+```
