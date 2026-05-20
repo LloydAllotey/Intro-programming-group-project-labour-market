@@ -676,16 +676,17 @@ class LabourMarketFramework:
         series_id: str = "UNRATE",
         start_date: str | None = None,
         end_date: str | None = None,
+        enrollment_metric: str = "growth",
     ):
         """
-        Plot a labour-market series alongside the year-over-year growth of master's enrollment.
+        Plot a labour-market series alongside master's enrollment.
 
-        The FRED series is drawn on the left axis and the YoY percentage growth of master's
-        enrollment on the right. NBER recession bands are shaded. This figure addresses the
-        research question by analysing how master's enrollment responds to market conditions.
+        The FRED series is drawn on the left axis, Master's enrollment
+        on the right. Either as YoY growth (%) or as raw level (millions of students),
+        controlled by `enrollment_metric`. NBER recession bands are shaded.
 
-        The FRED series is monthly and NCES master's enrollment is annual. To
-        avoid mixing frequencies they have separate y-axes.
+        The FRED series is monthly and NCES master's enrollment is annual.
+        To avoid mixing frequencies they have separate y-axes.
 
         Parameters:
         series_id : str, default "UNRATE"
@@ -694,43 +695,57 @@ class LabourMarketFramework:
             Inclusive lower bound, "YYYY-MM-DD".
         end_date : str or None, default None
             Inclusive upper bound, "YYYY-MM-DD".
+        enrollment_metric : str, default "growth"
+            "growth" plots YoY growth (%). "level" plots raw enrollment count, scaled to millions.
 
         Returns:
         matplotlib.figure.Figure
-            The figure with the FRED series and enrollment growth on two separate y-axes.
+            The figure with the FRED series and enrollment on two separate y-axes.
 
         Raises:
         TypeError
             If start_date or end_date is not a string.
         ValueError
-            If series_id is unknown, the dates are invalid, or the window
-            contains no data for one of the two series.
+            If series_id is unknown, enrollment_metric is not "growth" or
+            "level", the dates are invalid, or the window contains no data
+            for one of the two series.
         """
-        # Validate the inputs first, so a mistake is caught before any plotting
+        # Validate first so a mistake is caught before any data work
         self._validate_series_id(series_id)
         self._validate_dates(start_date, end_date)
+        if enrollment_metric not in ("growth", "level"):
+            raise ValueError(
+                f"enrollment_metric must be 'growth' or 'level', got"
+                f"'{enrollment_metric}'."
+            )
 
         indicator = self.load_series(series_id, start_date, end_date)
         enrollment = self.load_series("MASTERS_ENROLLMENT", start_date, end_date)
         if indicator.empty or enrollment.empty:
             raise ValueError(
-                f"No data for '{series_id}' and master's enrollment in the "
-                f"requested window (start_date={start_date}, "
+                f"No data for '{series_id}' and master's enrollment in the"
+                f"requested window (start_date={start_date},"
                 f"end_date={end_date}). Master's enrollment covers 2000 to 2022."
             )
 
-        # Convert enrollment to YoY percentage growth
-        enrollment = enrollment.pct_change() * 100
-        enrollment_axis_label = "Master's enrollment, year-over-year growth (%)"
-        enrollment_legend = "Master's enrollment growth"
-        title = f"Master's enrollment growth and {series_id}"
+        # Transform enrollment to chosen metric
+        if enrollment_metric == "growth":
+            enrollment_plot = enrollment.pct_change() * 100
+            enrollment_axis_label = (
+                "Master's enrollment, YoY growth (%)"
+            )
+            enrollment_legend = "Master's enrollment growth"
+            title = f"Master's enrollment growth and {series_id}, US"
+        else:  # "level"
+            enrollment_plot = enrollment / 1_000_000  # scale to millions
+            enrollment_axis_label = "Master's enrollment (millions of students)"
+            enrollment_legend = "Master's enrollment"
+            title = f"Master's enrollment and {series_id}, US"
 
-        # twinx() adds a second y-axis that shares the x-axis, so the two
-        # series, which are on very different scales, fit on one figure.
         fig, ax_indicator = plt.subplots(figsize=(10, 5))
         ax_enrollment = ax_indicator.twinx()
 
-        # Shade the recessions first so the lines are drawn on top of them.
+        # Shade recessions first so the lines are drawn on top of them.
         self._shade_recessions(ax_indicator, start_date, end_date)
 
         indicator_line = ax_indicator.plot(
@@ -741,8 +756,8 @@ class LabourMarketFramework:
             label=series_id,
         )
         enrollment_line = ax_enrollment.plot(
-            enrollment.index,
-            enrollment.values,
+            enrollment_plot.index,
+            enrollment_plot.values,
             color="darkred",
             linewidth=1.5,
             linestyle="--",
