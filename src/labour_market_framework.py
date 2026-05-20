@@ -755,39 +755,49 @@ class LabourMarketFramework:
         fig.tight_layout()
         return fig
 
-    def plot_stress_index_vs_enrollment_growth(
+    def plot_stress_index_vs_enrollment(
         self,
         start_date: str | None = None,
         end_date: str | None = None,
+        enrollment_metric: str = "growth",
     ):
         """
-        Plot the labour-market stress index alongside year-over-year master's enrollment growth.
+        Plot the labour-market stress index alongside master's enrollment.
 
-        The stress index is the monthly composite from `compute_stress_index`.
-        Master's enrollment is the annual NCES series. We shows its YoY percentage growth.
-        The two live on separate y-axes as their frequencies and units differ.
+        The stress index is the monthly composite from `compute_stress_index`:
+        higher values mean worse labour-market conditions. Master's enrollment goes
+        on the right axis, either YoY growth (%) or as raw level (millions of students),
+        controlled by `enrollment_metric`. The two live on separate y-axes as their frequencies differ.
 
         The figure speaks directly to the research question:
-        does enrollment respond to broad labour-market deterioration
+        does enrollment respond to broad labour-market deterioration, not just a single indicator.
 
         Parameters:
         start_date : str or None, default None
             Inclusive lower bound, "YYYY-MM-DD".
         end_date : str or None, default None
             Inclusive upper bound, "YYYY-MM-DD".
+        enrollment_metric : str, default "growth"
+            "growth" plots YoY growth (%). "level" plots raw enrollment count, scaled to millions.
 
         Returns:
         matplotlib.figure.Figure
-            Figure with the index and enrollment growth on two y-axes.
+            The figure with the stress index and enrollment on two separate y-axes.
 
         Raises:
         TypeError
             If start_date or end_date is not a string.
         ValueError
-            If dates are invalid, or window contains no data for any of the series.
+            If dates are invalid, enrollment_metric is not "growth" or
+            "level", or the window contains no data for one of the two series.
         """
-        # Validate first so a bad date is caught before any data work.
+        # Validate first so a bad input is caught before any data work
         self._validate_dates(start_date, end_date)
+        if enrollment_metric not in ("growth", "level"):
+            raise ValueError(
+                f"enrollment_metric must be 'growth' or 'level', got "
+                f"'{enrollment_metric}'."
+            )
 
         stress = self.compute_stress_index(start_date=start_date, end_date=end_date)
         enrollment = self.load_series("MASTERS_ENROLLMENT", start_date, end_date)
@@ -798,8 +808,19 @@ class LabourMarketFramework:
                 f"end_date={end_date}). Master's enrollment covers 2000 to 2022."
             )
 
-        # Convert enrollment to YoY % growth, with first obs. becoming NaN, which is skipped silently
-        enrollment_growth = enrollment.pct_change() * 100
+        # Transform enrollment to the chosen metric
+        if enrollment_metric == "growth":
+            enrollment_plot = enrollment.pct_change() * 100
+            enrollment_axis_label = (
+                "Master's enrollment, year-over-year growth (%)"
+            )
+            enrollment_legend = "Master's enrollment growth"
+            title = "Labour-market stress index and master's enrollment growth, US"
+        else:  # "level"
+            enrollment_plot = enrollment / 1_000_000  # scale to millions
+            enrollment_axis_label = "Master's enrollment (millions of students)"
+            enrollment_legend = "Master's enrollment"
+            title = "Labour-market stress index and master's enrollment, US"
 
         fig, ax_stress = plt.subplots(figsize=(10, 5))
         ax_enrollment = ax_stress.twinx()
@@ -814,29 +835,25 @@ class LabourMarketFramework:
             label="Stress index",
         )
         enrollment_line = ax_enrollment.plot(
-            enrollment_growth.index,
-            enrollment_growth.values,
+            enrollment_plot.index,
+            enrollment_plot.values,
             color="darkred",
             linewidth=1.5,
             linestyle="--",
             marker="o",
             markersize=4,
-            label="Master's enrollment growth",
+            label=enrollment_legend,
         )
 
         ax_stress.set_xlabel("Year")
         ax_stress.set_ylabel("Stress index (z-score, higher = worse)", color="navy")
-        ax_enrollment.set_ylabel(
-            "Master's enrollment, year-over-year growth (%)", color="darkred"
-        )
-        ax_stress.set_title(
-            "Labour-market stress index and master's enrollment growth"
-        )
+        ax_enrollment.set_ylabel(enrollment_axis_label, color="darkred")
+        ax_stress.set_title(title)
 
         # One legend for both axes
         ax_stress.legend(
             stress_line + enrollment_line,
-            ["Stress index", "Master's enrollment growth"],
+            ["Stress index", enrollment_legend],
             fontsize=8,
             loc="upper right",
         )
