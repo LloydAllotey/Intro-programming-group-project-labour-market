@@ -94,6 +94,10 @@ notebook ever calls the FRED API or reads a CSV.
 
 ### 1.5 First call
 
+Run the code below in a notebook or script inside `notebooks/` (the same
+folder this guide lives in), so the `Path("..")` references resolve to
+the repo root.
+
 ```{python}
 #| label: setup
 import sys
