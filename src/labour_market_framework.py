@@ -521,12 +521,16 @@ class LabourMarketFramework:
         start_date: str | None = None,
         end_date: str | None = None,
         include_correlations: bool = False,
+        corr_freq: str = "monthly",
     ):
         """
-        Summary statistics: count, mean, std, min, max.
+        Summary statistics for the requested series: count, mean, std, min, max.
 
-        The default summarizes every series in the database. series_ids is used
-        to limit the summary. By setting include_correlations = True a second table with the correlations is produced.
+        A correlation needs every series on one frequency, which corr_freq sets.
+        "monthly" correlates monthly series only and drops the annual MASTERS_ENROLLMENT,
+        since putting an annual series into a monthly corr. would need interpolation and so invent data.
+        "annual" downsamples every series to annual means instead. This keeps MASTERS_ENROLLMENT
+        in the matrix. The summary table itself is unchanged by corr_freq.
 
         Parameters:
         series_ids : list[str] or None, optional
@@ -536,21 +540,29 @@ class LabourMarketFramework:
         end_date : str or None, optional
             Inclusive upper bound 'YYYY-MM-DD'.
         include_correlations : bool, default False
-            Set True to return correlation matrix. But only same-frequency series for corr
-            to avoid misleading output by mixing incomparable frequencies.
+            If True, also return the correlation matrix.
+        corr_freq : str, default "monthly"
+            "monthly" or "annual". Use "annual" to include MASTERS_ENROLLMENT in
+            the correlation (downsamples every series to annual means).
 
         Returns:
         pandas.DataFrame
-            Indexed by series_id, columns: count, mean, std, min, max. We round to 2dp.
-        tuple[pandas.DataFrame, pandas.DataFrame], set include_correlations = True to return this.
+            summary table, indexed by series_id, columns count, mean, std, min and max, round 0.2.
+        tuple[pandas.DataFrame, pandas.DataFrame]
+            When include_correlations=True: summary table and correlation matrix
 
         Raises:
         ValueError
-            If `series_ids` contains an unknown ID, or dates are invalid.
+            If series_ids contains an unknown ID, corr_freq is not "monthly"
+            or "annual", or the dates are invalid.
         TypeError
-            If dates or series aren't strings.
+            If the dates or series_ids entries are not strings.
         """
         self._validate_dates(start_date, end_date)
+        if corr_freq not in ("monthly", "annual"):
+            raise ValueError(
+                f"corr_freq must be 'monthly' or 'annual', got '{corr_freq}'."
+            )
 
         if series_ids is None:
             series_ids = sorted(self._available_ids)
@@ -575,19 +587,26 @@ class LabourMarketFramework:
         ).T.round(2)
 
         if include_correlations:
-            # Only draw correlation on monthly series to avoid misleading
-            # output from mixed frequencies (Master's enrollment only annually available)
-            monthly_ids = (
-                self._conn.execute(
-                    "SELECT series_id FROM series WHERE frequency = 'M' "
+            if corr_freq == "monthly":
+                # Monthly corr.: keep only the monthly series. An annual series
+                # cannot enter a monthly corr. without interpolation (inventing data)
+                monthly_ids = (
+                    self._conn.execute(
+                        "SELECT series_id FROM series WHERE frequency = 'M'"
+                    )
+                    .df()["series_id"]
+                    .tolist()
                 )
-                .df()["series_id"]
-                .tolist()
-            )
-            monthly_dict = {
-                sid: s for sid, s in series_dict.items() if sid in monthly_ids
-            }
-            df_combined = self.align_frequencies(monthly_dict, how="inner")
+                monthly_dict = {
+                    sid: s for sid, s in series_dict.items() if sid in monthly_ids
+                }
+                df_combined = self.align_frequencies(monthly_dict, how="inner")
+            else:
+                # Annual corr.: downsample every series to annual means
+                # (year start). This retains annual MASTERS_ENROLLMENT.
+                df_combined = self.align_frequencies(
+                    series_dict, freq="YS", how="inner"
+                )
             corr = df_combined.corr().round(2)
             return stats, corr
         return stats
@@ -693,16 +712,17 @@ class LabourMarketFramework:
         series_id: str = "UNRATE",
         start_date: str | None = None,
         end_date: str | None = None,
+        enrollment_metric: str = "growth",
     ):
         """
-        Plot a labour-market series alongside the year-over-year growth of master's enrollment.
+        Plot a labour-market series alongside master's enrollment.
 
-        The FRED series is drawn on the left axis and the YoY percentage growth of master's
-        enrollment on the right. NBER recession bands are shaded. This figure addresses the
-        research question by analysing how master's enrollment responds to market conditions.
+        The FRED series is drawn on the left axis, Master's enrollment
+        on the right. Either as YoY growth (%) or as raw level (millions of students),
+        controlled by `enrollment_metric`. NBER recession bands are shaded.
 
-        The FRED series is monthly and NCES master's enrollment is annual. To
-        avoid mixing frequencies they have separate y-axes.
+        The FRED series is monthly and NCES master's enrollment is annual.
+        To avoid mixing frequencies they have separate y-axes.
 
         Parameters:
         series_id : str, default "UNRATE"
@@ -711,43 +731,57 @@ class LabourMarketFramework:
             Inclusive lower bound, "YYYY-MM-DD".
         end_date : str or None, default None
             Inclusive upper bound, "YYYY-MM-DD".
+        enrollment_metric : str, default "growth"
+            "growth" plots YoY growth (%). "level" plots raw enrollment count, scaled to millions.
 
         Returns:
         matplotlib.figure.Figure
-            The figure with the FRED series and enrollment growth on two separate y-axes.
+            The figure with the FRED series and enrollment on two separate y-axes.
 
         Raises:
         TypeError
             If start_date or end_date is not a string.
         ValueError
-            If series_id is unknown, the dates are invalid, or the window
-            contains no data for one of the two series.
+            If series_id is unknown, enrollment_metric is not "growth" or
+            "level", the dates are invalid, or the window contains no data
+            for one of the two series.
         """
-        # Validate the inputs first, so a mistake is caught before any plotting
+        # Validate first so a mistake is caught before any data work
         self._validate_series_id(series_id)
         self._validate_dates(start_date, end_date)
+        if enrollment_metric not in ("growth", "level"):
+            raise ValueError(
+                f"enrollment_metric must be 'growth' or 'level', got"
+                f"'{enrollment_metric}'."
+            )
 
         indicator = self.load_series(series_id, start_date, end_date)
         enrollment = self.load_series("MASTERS_ENROLLMENT", start_date, end_date)
         if indicator.empty or enrollment.empty:
             raise ValueError(
-                f"No data for '{series_id}' and master's enrollment in the "
-                f"requested window (start_date={start_date}, "
+                f"No data for '{series_id}' and master's enrollment in the"
+                f"requested window (start_date={start_date},"
                 f"end_date={end_date}). Master's enrollment covers 2000 to 2022."
             )
 
-        # Convert enrollment to YoY percentage growth
-        enrollment = enrollment.pct_change() * 100
-        enrollment_axis_label = "Master's enrollment, year-over-year growth (%)"
-        enrollment_legend = "Master's enrollment growth"
-        title = f"Master's enrollment growth and {series_id}"
+        # Transform enrollment to chosen metric
+        if enrollment_metric == "growth":
+            enrollment_plot = enrollment.pct_change() * 100
+            enrollment_axis_label = (
+                "Master's enrollment, YoY growth (%)"
+            )
+            enrollment_legend = "Master's enrollment growth"
+            title = f"Master's enrollment growth and {series_id}, US"
+        else:  # "level"
+            enrollment_plot = enrollment / 1_000_000  # scale to millions
+            enrollment_axis_label = "Master's enrollment (millions of students)"
+            enrollment_legend = "Master's enrollment"
+            title = f"Master's enrollment and {series_id}, US"
 
-        # twinx() adds a second y-axis that shares the x-axis, so the two
-        # series, which are on very different scales, fit on one figure.
         fig, ax_indicator = plt.subplots(figsize=(10, 5))
         ax_enrollment = ax_indicator.twinx()
 
-        # Shade the recessions first so the lines are drawn on top of them.
+        # Shade recessions first so the lines are drawn on top of them.
         self._shade_recessions(ax_indicator, start_date, end_date)
 
         indicator_line = ax_indicator.plot(
@@ -758,8 +792,8 @@ class LabourMarketFramework:
             label=series_id,
         )
         enrollment_line = ax_enrollment.plot(
-            enrollment.index,
-            enrollment.values,
+            enrollment_plot.index,
+            enrollment_plot.values,
             color="darkred",
             linewidth=1.5,
             linestyle="--",
