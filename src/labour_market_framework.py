@@ -47,6 +47,12 @@ class LabourMarketFramework:
     _RECESSION_SERIES_ID = "USREC"
 
     def __init__(self, db_path: str | Path = "data/fred.db") -> None:
+        """
+        Open a read-only DuckDB connection at `db_path` and cache the
+        list of available series IDs for fast validation later.
+
+        See the class docstring for parameters and raised exceptions.
+        """
         self.db_path = Path(db_path)
         if not self.db_path.exists():
             raise FileNotFoundError(
