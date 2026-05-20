@@ -51,7 +51,6 @@ This needs a `FRED_API_KEY` in a local `.env` file. Template is `.env.example`.
 ```
 ├── data/
 │   ├── build_fred.py             # FRED + NCES to DuckDB ETL script
-│   ├── er_diagram.md             # ER diagram (Mermaid)
 │   ├── fred.db
 │   └── star_schema_sketch.png
 ├── src/
