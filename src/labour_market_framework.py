@@ -505,12 +505,8 @@ class LabourMarketFramework:
         """
         Summary statistics: count, mean, std, min, max.
 
-
-
         The default summarizes every series in the database. series_ids is used
-        to limit the summary.
-        By setting include_correlations=True a second table with the correlations is produced.
-
+        to limit the summary. By setting include_correlations = True a second table with the correlations is produced.
 
         Parameters:
         series_ids : list[str] or None, optional
@@ -521,17 +517,12 @@ class LabourMarketFramework:
             Inclusive upper bound 'YYYY-MM-DD'.
         include_correlations : bool, default False
             Set True to return correlation matrix. But only same-frequency series for corr
-            to avoid misleading output by mixing incomparable frequencies. Stats table will have
-            9 rows and corr only 8 because Master Enrollment data is only annually
-            available.
-
-
+            to avoid misleading output by mixing incomparable frequencies.
 
         Returns:
         pandas.DataFrame
             Indexed by series_id, columns: count, mean, std, min, max. We round to 2dp.
-        tuple[pandas.DataFrame, pandas.DataFrame], optional
-            Set include_correlations=True to return this.
+        tuple[pandas.DataFrame, pandas.DataFrame], set include_correlations = True to return this.
 
         Raises:
         ValueError
