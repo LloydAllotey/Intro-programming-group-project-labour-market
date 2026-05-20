@@ -285,12 +285,32 @@ class LabourMarketFramework:
         Raises
         ------
         ValueError
-            If `series_dict` is empty or `how` is not 'inner'/'outer'.
+            If `series_dict` is empty, if `how` is not 'inner' or 'outer',
+            or if an annual series is inner-joined at a sub-annual `freq`.
+            That last case would silently drop almost all rows. pass
+            freq='YS' or use how='outer' instead.
         """
         if not series_dict:
             raise ValueError("series_dict is empty — nothing to align.")
         if how not in ("inner", "outer"):
             raise ValueError(f"how must be 'inner' or 'outer', got '{how}'.")
+
+        # Refuse to upsample annual series to sub-annual freq e.g. 'MS' fills
+        # NaN months and inner-join then drops them silently. Catch this before
+        # it happens instead of returning an empty DataFrame.
+        if how == "inner" and not freq.upper().startswith(("Y", "A", "Q")):
+            for name, s in series_dict.items():
+                if len(s) < 2:
+                    continue
+                inferred = pd.infer_freq(s.index)
+                if inferred and inferred.upper().startswith(("Y", "A")):
+                    raise ValueError(
+                        f"'{name}' is annual (inferred '{inferred}') but "
+                        f"freq='{freq}' is finer and how='inner'. The inner "
+                        f"join would silently drop the upsampled NaN months. "
+                        f"Pass freq='YS' to align on annual means, or use "
+                        f"how='outer' to keep the upsampled NaNs visible."
+                    )
 
         # Resample each series to the target frequency. We take the mean over
         # each period; for a rate or level the mean keeps the average value,
