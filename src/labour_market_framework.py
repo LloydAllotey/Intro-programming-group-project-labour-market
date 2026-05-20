@@ -640,7 +640,17 @@ class LabourMarketFramework:
             "PAYEMS": -1,  # nonfarm payrolls: higher is better
         }
         if weights is None:
-            weights = {sid: _DEFAULT_SIGNS.get(sid, 1.0) for sid in series_ids}
+        # The default sign table covers this project's series only. For any
+        # other series the caller must pass `weights`, so the index is never
+        # built on a silently wrong sign.
+            missing = [sid for sid in series_ids if sid not in _DEFAULT_SIGNS]
+            if missing:
+                raise ValueError(
+                    f"No default sign defined for {missing}. compute_stress_index "
+                    "has default signs only for this project's series; pass an "
+                    "explicit `weights` dict (one entry per series) for other data."
+                )
+            weights = {sid: _DEFAULT_SIGNS[sid] for sid in series_ids}
 
         if set(weights.keys()) != set(series_ids):
             raise ValueError(
