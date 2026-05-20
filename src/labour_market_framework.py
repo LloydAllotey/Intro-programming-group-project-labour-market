@@ -47,6 +47,12 @@ class LabourMarketFramework:
     _RECESSION_SERIES_ID = "USREC"
 
     def __init__(self, db_path: str | Path = "data/fred.db") -> None:
+        """
+        Open a read-only DuckDB connection at `db_path` and cache the
+        list of available series IDs for fast validation later.
+
+        See the class docstring for parameters and raised exceptions.
+        """
         self.db_path = Path(db_path)
         if not self.db_path.exists():
             raise FileNotFoundError(
@@ -279,12 +285,32 @@ class LabourMarketFramework:
         Raises
         ------
         ValueError
-            If `series_dict` is empty or `how` is not 'inner'/'outer'.
+            If `series_dict` is empty, if `how` is not 'inner' or 'outer',
+            or if an annual series is inner-joined at a sub-annual `freq`.
+            That last case would silently drop almost all rows. pass
+            freq='YS' or use how='outer' instead.
         """
         if not series_dict:
             raise ValueError("series_dict is empty — nothing to align.")
         if how not in ("inner", "outer"):
             raise ValueError(f"how must be 'inner' or 'outer', got '{how}'.")
+
+        # Refuse to upsample annual series to sub-annual freq e.g. 'MS' fills
+        # NaN months and inner-join then drops them silently. Catch this before
+        # it happens instead of returning an empty DataFrame.
+        if how == "inner" and not freq.upper().startswith(("Y", "A", "Q")):
+            for name, s in series_dict.items():
+                if len(s) < 2:
+                    continue
+                inferred = pd.infer_freq(s.index)
+                if inferred and inferred.upper().startswith(("Y", "A")):
+                    raise ValueError(
+                        f"'{name}' is annual (inferred '{inferred}') but "
+                        f"freq='{freq}' is finer and how='inner'. The inner "
+                        f"join would silently drop the upsampled NaN months. "
+                        f"Pass freq='YS' to align on annual means, or use "
+                        f"how='outer' to keep the upsampled NaNs visible."
+                    )
 
         # Resample each series to the target frequency. We take the mean over
         # each period; for a rate or level the mean keeps the average value,
@@ -650,7 +676,17 @@ class LabourMarketFramework:
             "PAYEMS": -1,  # nonfarm payrolls: higher is better
         }
         if weights is None:
-            weights = {sid: _DEFAULT_SIGNS.get(sid, 1.0) for sid in series_ids}
+        # The default sign table covers this project's series only. For any
+        # other series the caller must pass `weights`, so the index is never
+        # built on a silently wrong sign.
+            missing = [sid for sid in series_ids if sid not in _DEFAULT_SIGNS]
+            if missing:
+                raise ValueError(
+                    f"No default sign defined for {missing}. compute_stress_index "
+                    "has default signs only for this project's series; pass an "
+                    "explicit `weights` dict (one entry per series) for other data."
+                )
+            weights = {sid: _DEFAULT_SIGNS[sid] for sid in series_ids}
 
         if set(weights.keys()) != set(series_ids):
             raise ValueError(
@@ -780,39 +816,49 @@ class LabourMarketFramework:
         fig.tight_layout()
         return fig
 
-    def plot_stress_index_vs_enrollment_growth(
+    def plot_stress_index_vs_enrollment(
         self,
         start_date: str | None = None,
         end_date: str | None = None,
+        enrollment_metric: str = "growth",
     ):
         """
-        Plot the labour-market stress index alongside year-over-year master's enrollment growth.
+        Plot the labour-market stress index alongside master's enrollment.
 
-        The stress index is the monthly composite from `compute_stress_index`.
-        Master's enrollment is the annual NCES series. We shows its YoY percentage growth.
-        The two live on separate y-axes as their frequencies and units differ.
+        The stress index is the monthly composite from `compute_stress_index`:
+        higher values mean worse labour-market conditions. Master's enrollment goes
+        on the right axis, either YoY growth (%) or as raw level (millions of students),
+        controlled by `enrollment_metric`. The two live on separate y-axes as their frequencies differ.
 
         The figure speaks directly to the research question:
-        does enrollment respond to broad labour-market deterioration
+        does enrollment respond to broad labour-market deterioration, not just a single indicator.
 
         Parameters:
         start_date : str or None, default None
             Inclusive lower bound, "YYYY-MM-DD".
         end_date : str or None, default None
             Inclusive upper bound, "YYYY-MM-DD".
+        enrollment_metric : str, default "growth"
+            "growth" plots YoY growth (%). "level" plots raw enrollment count, scaled to millions.
 
         Returns:
         matplotlib.figure.Figure
-            Figure with the index and enrollment growth on two y-axes.
+            The figure with the stress index and enrollment on two separate y-axes.
 
         Raises:
         TypeError
             If start_date or end_date is not a string.
         ValueError
-            If dates are invalid, or window contains no data for any of the series.
+            If dates are invalid, enrollment_metric is not "growth" or
+            "level", or the window contains no data for one of the two series.
         """
-        # Validate first so a bad date is caught before any data work.
+        # Validate first so a bad input is caught before any data work
         self._validate_dates(start_date, end_date)
+        if enrollment_metric not in ("growth", "level"):
+            raise ValueError(
+                f"enrollment_metric must be 'growth' or 'level', got "
+                f"'{enrollment_metric}'."
+            )
 
         stress = self.compute_stress_index(start_date=start_date, end_date=end_date)
         enrollment = self.load_series("MASTERS_ENROLLMENT", start_date, end_date)
@@ -823,8 +869,19 @@ class LabourMarketFramework:
                 f"end_date={end_date}). Master's enrollment covers 2000 to 2022."
             )
 
-        # Convert enrollment to YoY % growth, with first obs. becoming NaN, which is skipped silently
-        enrollment_growth = enrollment.pct_change() * 100
+        # Transform enrollment to the chosen metric
+        if enrollment_metric == "growth":
+            enrollment_plot = enrollment.pct_change() * 100
+            enrollment_axis_label = (
+                "Master's enrollment, year-over-year growth (%)"
+            )
+            enrollment_legend = "Master's enrollment growth"
+            title = "Labour-market stress index and master's enrollment growth, US"
+        else:  # "level"
+            enrollment_plot = enrollment / 1_000_000  # scale to millions
+            enrollment_axis_label = "Master's enrollment (millions of students)"
+            enrollment_legend = "Master's enrollment"
+            title = "Labour-market stress index and master's enrollment, US"
 
         fig, ax_stress = plt.subplots(figsize=(10, 5))
         ax_enrollment = ax_stress.twinx()
@@ -839,29 +896,25 @@ class LabourMarketFramework:
             label="Stress index",
         )
         enrollment_line = ax_enrollment.plot(
-            enrollment_growth.index,
-            enrollment_growth.values,
+            enrollment_plot.index,
+            enrollment_plot.values,
             color="darkred",
             linewidth=1.5,
             linestyle="--",
             marker="o",
             markersize=4,
-            label="Master's enrollment growth",
+            label=enrollment_legend,
         )
 
         ax_stress.set_xlabel("Year")
         ax_stress.set_ylabel("Stress index (z-score, higher = worse)", color="navy")
-        ax_enrollment.set_ylabel(
-            "Master's enrollment, year-over-year growth (%)", color="darkred"
-        )
-        ax_stress.set_title(
-            "Labour-market stress index and master's enrollment growth"
-        )
+        ax_enrollment.set_ylabel(enrollment_axis_label, color="darkred")
+        ax_stress.set_title(title)
 
         # One legend for both axes
         ax_stress.legend(
             stress_line + enrollment_line,
-            ["Stress index", "Master's enrollment growth"],
+            ["Stress index", enrollment_legend],
             fontsize=8,
             loc="upper right",
         )

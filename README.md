@@ -54,7 +54,7 @@ This needs a `FRED_API_KEY` in a local `.env` file. Template is `.env.example`.
 │   ├── fred.db
 │   └── star_schema_sketch.png
 ├── src/
-│   └── labourmarket_framework.py    # LabourMarketFramework class
+│   └── labour_market_framework.py    # LabourMarketFramework class
 └── notebooks/
     ├── analysis.qmd / .html
     └── user_guide.qmd / .html
