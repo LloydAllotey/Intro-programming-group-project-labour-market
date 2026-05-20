@@ -1,5 +1,5 @@
 """
-Build the DuckDB database used by the BeveridgeFramework class.
+Build the DuckDB database used by the LabourMarketFramework class.
 
 This is an ETL process. It pulls US labour market series from the FRED API
 adds master's enrollment data from the NCES databank, and organizes everything into
@@ -23,7 +23,7 @@ from fredapi import Fred
 # ─── configuration ─────────────────────────────────────────────────────────────────────
 
 # The single point where we list every series the project uses.`category`
-# is our own grouping. It lets the BeveridgeFramework class filter series
+# is our own grouping. It lets the LabourMarketFramework class filter series
 # by purpose without hard-coding series IDs.
 SERIES = {
     "JTSJOR": {"category": "beveridge"},  # Job Openings Rate
